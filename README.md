@@ -3,12 +3,11 @@
 > **Beta 0.5.7**  
 > Entwickelt u.a. für die Community von **https://www.storion4you.de/**  
 > G2T-Erweiterung für **AlphaESS SMILE-G3-EVCT11/S**: **Kavino**  
-> Basierend auf diesem Ausgangsprojekt 
 
 Diese Home-Assistant-Custom-Integration bindet AlphaESS-Wallboxen über das AlphaESS-Kundenportal an Home Assistant an. 
-Erhält die bestehende G1T-Unterstützung und ergänzt die neuere G2T-Konfiguration der SMILE-G3-EVCT11/S (Kavino).
+G1T-Unterstützung und ergänzend eine neuere G2T-Konfiguration der SMILE-G3-EVCT11/S (Kavino).
 
-Dies ist ein Community-Projekt und keine offizielle AlphaESS-Integration. Die G2T-Funktionen wurden praktisch getestet; einzelne Sonderfälle und die G1T-Hardwarekompatibilität benötigen weitere Rückmeldungen.
+Dies ist ein Community-Projekt und keine offizielle AlphaESS-Integration. Die G2T-Funktionen und die G1T-Hardwarekompatibilität wurden praktisch getestet; einzelne Sonderfälle benötigen weitere Rückmeldungen.
 
 ## Unterstützter Stand
 
@@ -33,7 +32,7 @@ Der Diagnose-Sensor **Portal-Profil** zeigt das erkannte Profil und das dazugeh�
 
 ### G1T
 
-Die bestehende G1T-Erkennung und -Konfiguration des Ausgangsprojekts bleibt erhalten. Die G2T-spezifischen Schutzregeln greifen nicht in den G1T-Pfad ein. Für diese Beta wurde kein eigener G1T-Hardware-Regressionslauf durchgeführt.
+Die bestehende G1T-Erkennung und -Konfiguration bleibt erhalten. Die G2T-spezifischen Schutzregeln greifen nicht in den G1T-Pfad ein.
 
 ## G2T-Schutzlogik
 
@@ -106,11 +105,7 @@ Bei einer Neuinstallation die Integration über **Einstellungen → Geräte & Di
 
 ## Projekt-Herkunft und Attribution
 
-Diese Ausgabe der **AlphaESS Wallbox Bridge** wurde für die Community von **https://www.storion4you.de/** erstellt und erweitert.
-
 Die Unterstützung der **AlphaESS SMILE-G3-EVCT11/S (G2T)** wurde durch **Kavino** aus der Storion4you-Community initiiert, anhand realer Portal- und Wallbox-Daten ermittelt und praktisch getestet. Dazu gehören insbesondere die G2T-Zuordnungen und die Home-Assistant-Unterstützung für Ladestrategie, Lademodus, Ladestrom, OBC-Phasenwahl, Smart Mode, Zeitfenster, Live-Status und Energiebericht.
-
-Die Erweiterung basiert auf **wfa001/SMILE-EVCT11**. Die Kennzeichnung als Storion4you-/Kavino-Erweiterung macht die Herkunft der G2T-Erweiterung sichtbar und ersetzt oder beansprucht nicht die Urheberschaft des Ausgangsprojekts.
 
 ## Beta-Feedback
 
