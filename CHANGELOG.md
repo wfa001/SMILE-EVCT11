@@ -1,3 +1,9 @@
+## 0.5.5
+
+- Stellt die Integration in die Standardstruktur `custom_components/alphaess_portal_bridge/` um.
+- Ergänzt HACS- und Home-Assistant-Metadaten im Manifest.
+- Richtet die Profilbild-Pfade an den kleingeschriebenen Dateinamen aus.
+
 ## 0.5.4
 
 - Zeigt beim Portal-Profil-Sensor das passende G1T- oder G2T-Bild.
