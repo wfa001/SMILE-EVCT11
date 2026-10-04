@@ -1,6 +1,6 @@
 # AlphaESS Wallbox Bridge – Storion4you Community Build
 
-> **Beta 0.5.4**  
+> **Beta 0.5.5**  
 > Entwickelt für die Community von **https://www.storion4you.de/**  
 > G2T-Erweiterung für **AlphaESS SMILE-G3-EVCT11/S**: **Kavino**  
 > Basierend auf dem Ausgangsprojekt **wfa001/SMILE-EVCT11**.
