@@ -19,13 +19,13 @@ from .coordinator import AlphaESSWallboxCoordinator
 G1_MODES = {
     "ECO-Ladung": 0,
     "Langsamladung": 1,
-    "Schonladung": 2,
+    "Schonladung / Standardleistung": 2,
     "Schnellladung": 3,
     "Kundenspezifische Ladeleistung": 4,
 }
 G2_MODES = {
     "Langsamladung": 1,
-    "Schonladung": 2,
+    "Schonladung / Standardleistung": 2,
     "Schnellladung": 3,
     "Kundenspezifische Ladeleistung": 4,
 }

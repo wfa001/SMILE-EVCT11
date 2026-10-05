@@ -46,6 +46,16 @@ class AlphaESSInstallerControlSwitch(AlphaESSWallboxEntity, SwitchEntity):
         super().__init__(coordinator, entry, "installer_control_allowed")
 
     @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        return {
+            "Hinweis": (
+                "Erlaubt dem verknüpften AlphaESS-Installateur die Fernsteuerung bzw. "
+                "Konfiguration über den Installateurzugang. Der genaue Funktionsumfang "
+                "dieser Portal-Einstellung ist von AlphaESS nicht vollständig dokumentiert."
+            )
+        }
+
+    @property
     def is_on(self) -> bool | None:
         value = self.wallbox.get("allowInstallersControl")
         return value if isinstance(value, bool) else None
@@ -71,7 +81,7 @@ class AlphaESSInstallerControlSwitch(AlphaESSWallboxEntity, SwitchEntity):
 class AlphaESSGunLineSelfLockSwitch(AlphaESSWallboxEntity, SwitchEntity):
     """Configure the G2T cable self-lock feature exposed by the AlphaESS app."""
 
-    _attr_name = "Kabel-Selbstverriegelung aktiviert"
+    _attr_name = "Ladekabel an Wallbox automatisch verriegeln"
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry) -> None:
