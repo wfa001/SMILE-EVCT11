@@ -1,5 +1,14 @@
 # Changelog
 
+## Noch nicht veröffentlicht – Testerfeedback
+
+- Anzeige der gewählten Ladeeinstellung und der laut Portal-Modus ausgewählten
+  Zeitfenster klargestellt. Gespeicherte Zeiträume bleiben unangetastet.
+- Der benutzerdefinierte Ladestrom wird ausdrücklich als Portal-Sollwert
+  und nicht als physisch bestätigter Istwert beschrieben.
+- Automatisierte Regressionstests für die Hinweise ergänzt.
+
+
 ## 0.5.7
 
 - Ersetzt die Auswahl des Abfrageintervalls durch ein Zahlenfeld (30–300 Sekunden in 30-Sekunden-Schritten); die G1T-/G2T-Standardwerte bleiben 120 beziehungsweise 30 Sekunden.
