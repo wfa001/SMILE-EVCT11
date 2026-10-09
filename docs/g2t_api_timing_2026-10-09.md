@@ -51,11 +51,31 @@ has an independent power meter.
 - Avoid including bearer tokens, passwords or full identifiable device
   configuration in public diagnostics.
 
+## Implementation in the draft PR
+
+- A per-integration-instance lock serializes settings and schedule GET-modify-PATCH
+  transactions. It does **not** serialize other clients or the AlphaESS app.
+- When multiple valid current-only commands are waiting for this lock, only
+  the newest waiting setpoint is written. A command whose PATCH is already
+  in progress is **never cancelled or retried automatically**.
+- A request for a value already present in the freshly fetched configuration
+  skips the PATCH (it still performs the GET).
+- After a successful settings PATCH, the coordinator schedules one
+  **debounced read-back after 3 seconds**. This is an extra **GET**, not a
+  delay of the write. It complements the existing immediate entity refresh
+  and the existing normal polling; the timer is cancelled on integration
+  unload. It is **not** proof that the charging power has physically changed.
+- These changes do not introduce a PV-surplus controller and do not alter
+  the AlphaESS-native Smart Mode or charge strategies.
+- Standard-library regression tests cover queued commands, in-flight
+  commands, no-op writes, failures, preserving unrelated settings, and
+  debounced read-back/cancellation without real wallbox access.
+
 ## Release validation still required
 
 - G1T regression testing and G2T smoke tests for all writable entities.
-- Concurrent updates to different fields, including time periods.
-- Manual/App/Portal changes during Home Assistant operation.
+- Hardware/real-HA verification of concurrent updates to different fields, including time periods.
+- Manual/App/Portal changes during Home Assistant operation; no cross-client locking exists.
 - Rate limiting, timeouts, authentication refresh and reconnect behavior.
 - Verification that schedule periods and Smart Mode are never unintentionally
   overwritten.
