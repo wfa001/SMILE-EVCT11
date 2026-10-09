@@ -56,11 +56,36 @@ class PortalConnectionError(Exception):
 
 
 def _serialize_settings_write(method):
-    """Keep each portal settings GET-modify-PATCH transaction atomic locally."""
+    """Serialize settings updates; coalesce only queued current-only requests.
+
+    Once a PATCH has started it cannot safely be cancelled: the portal might
+    accept the request despite a client-side cancellation or timeout. A newer
+    charge-current request supersedes older *waiting* requests, not an
+    in-flight write. No artificial delay is added to wallbox commands.
+    """
 
     @wraps(method)
     async def wrapped(self, *args, **kwargs):
+        request_id = None
+        if (
+            method.__name__ == "async_update_wallbox_settings"
+            and len(kwargs) == 1
+            and "charge_current" in kwargs
+            and isinstance(kwargs["charge_current"], int)
+            and not isinstance(kwargs["charge_current"], bool)
+            and 6 <= kwargs["charge_current"] <= 16
+        ):
+            self._charge_current_request_id += 1
+            request_id = self._charge_current_request_id
+
         async with self._settings_write_lock:
+            if (
+                request_id is not None
+                and request_id != self._charge_current_request_id
+            ):
+                # The user requested a newer current while this call waited.
+                # Only drop a request which never began its portal transaction.
+                return
             return await method(self, *args, **kwargs)
 
     return wrapped
@@ -72,6 +97,7 @@ class AlphaESSPortalApi:
     def __init__(self, hass: HomeAssistant, config: dict[str, Any]) -> None:
         self._session = async_get_clientsession(hass)
         self._settings_write_lock = asyncio.Lock()
+        self._charge_current_request_id = 0
         self._username = config[CONF_USERNAME]
         self._password = config[CONF_PASSWORD]
         self._system_serial = config[CONF_SYSTEM_SERIAL]
@@ -359,6 +385,10 @@ class AlphaESSPortalApi:
                 raise ValueError("Diese Wallbox unterstützt keine Kabel-Selbstverriegelung")
             settings["gunLineSelfLockEnable"] = bool(gun_line_self_lock_enabled)
 
+        # Avoid an unnecessary remote write if the requested configuration
+        # already matches the freshly fetched portal document.
+        if payload == configuration:
+            return
         await self._async_authenticated_patch(
             f"/internal/v1/ess/{self._system_serial}", payload, step="wallbox settings"
         )
@@ -407,6 +437,8 @@ class AlphaESSPortalApi:
                 raise ValueError("Der Ladestrom muss zwischen 6 und 16 A liegen")
             period["chargeCurrent"] = charge_current
 
+        if payload == configuration:
+            return
         await self._async_authenticated_patch(
             f"/internal/v1/ess/{self._system_serial}", payload, step="time period settings"
         )
