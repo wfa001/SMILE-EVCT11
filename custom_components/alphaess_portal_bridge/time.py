@@ -19,7 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .api import AuthenticationError, PortalConnectionError
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
-from .entity import AlphaESSWallboxEntity, time_period
+from .entity import AlphaESSWallboxEntity, time_period, time_period_selected, time_period_status
 
 
 async def async_setup_entry(
@@ -48,12 +48,20 @@ class AlphaESSTimePeriodTime(AlphaESSWallboxEntity, TimeEntity):
         super().__init__(coordinator, entry, f"time_period_{index + 1}_{boundary}")
         self._index = index
         self._boundary = boundary
-        self._attr_name = f"Zeitrahmen {index + 1} {'Beginn' if boundary == 'start' else 'Ende'} (15-Min.-Raster)"
+        self._attr_name = f"Zeitrahmen {index + 1} {'Beginn' if boundary == 'start' else 'Ende'} (15-Min.-Eingabe)"
 
     @property
-    def extra_state_attributes(self) -> dict[str, str]:
+    def extra_state_attributes(self) -> dict[str, str | bool]:
         return {
-            "Hinweis": "Nur Viertelstunden sind erlaubt: Minute 00, 15, 30 oder 45.",
+            "Hinweis": (
+                "Gespeicherte App-Zeiten werden minutengenau angezeigt. "
+                "Neue Zeitänderungen über die Portal-API sind vorerst nur in "
+                "15-Minuten-Schritten freigegeben."
+            ),
+            "Zeitfenster laut Portal-Modus ausgewählt": time_period_selected(
+                self.coordinator, self._index
+            ),
+            "Zeitfenster-Status": time_period_status(self.coordinator, self._index),
         }
 
     @property
@@ -73,6 +81,8 @@ class AlphaESSTimePeriodTime(AlphaESSWallboxEntity, TimeEntity):
             return None
 
     async def async_set_value(self, value: time) -> None:
+        if value.second != 0 or value.microsecond != 0:
+            raise HomeAssistantError("Bitte eine Uhrzeit ohne Sekunden einstellen")
         hhmm = value.strftime("%H:%M")
         kwargs = {"start_time": hhmm} if self._boundary == "start" else {"end_time": hhmm}
         try:

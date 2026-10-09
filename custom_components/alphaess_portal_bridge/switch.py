@@ -19,7 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .api import AuthenticationError, PortalConnectionError
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
-from .entity import AlphaESSWallboxEntity, time_period
+from .entity import AlphaESSWallboxEntity, time_period, time_period_selected, time_period_status
 
 
 async def async_setup_entry(
@@ -161,6 +161,21 @@ class AlphaESSTimePeriodSwitch(AlphaESSWallboxEntity, SwitchEntity):
         super().__init__(coordinator, entry, f"time_period_{index + 1}_enabled")
         self._index = index
         self._attr_name = f"Zeitrahmen {index + 1} Aktiv"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | bool]:
+        return {
+            "Zeitfenster laut Portal-Modus ausgewählt": time_period_selected(
+                self.coordinator, self._index
+            ),
+            "Zeitfenster-Status": time_period_status(self.coordinator, self._index),
+            "Hinweis": (
+                "Aktiv zeigt nur die gespeicherte Freigabe dieses Zeitfensters. "
+                "Der Zeitplan ist nur bei Ladeeinstellung 'Zeitgesteuertes Aufladen' "
+                "ausgewählt. Ein Wechsel zu Plug and Play ändert die gespeicherten "
+                "Zeitfenster nicht."
+            ),
+        }
 
     @property
     def available(self) -> bool:

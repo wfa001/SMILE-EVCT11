@@ -51,6 +51,17 @@ class AlphaESSWallboxChargeCurrentNumber(_CurrentNumberBase):
         super().__init__(coordinator, entry, "custom_charge_current")
 
     @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        return {
+            "Hinweis": (
+                "Dies ist der vom AlphaESS-Portal gemeldete Soll-Ladestrom. "
+                "Eine erfolgreiche API-Antwort oder geänderte Anzeige bestätigt "
+                "noch keine physisch erfolgte Ladeleistungsänderung. "
+                "Für den tatsächlichen Ladezustand die Live-Leistung prüfen."
+            )
+        }
+
+    @property
     def native_value(self) -> float | None:
         value = self.settings.get("chargeCurrent")
         return float(value) if isinstance(value, (int, float)) else None

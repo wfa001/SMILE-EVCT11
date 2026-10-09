@@ -1,5 +1,22 @@
 # Changelog
 
+## Noch nicht veröffentlicht – Testerfeedback
+
+- Anzeige der gewählten Ladeeinstellung und der laut Portal-Modus ausgewählten
+  Zeitfenster klargestellt. Gespeicherte Zeiträume bleiben unangetastet.
+- Der benutzerdefinierte Ladestrom wird ausdrücklich als Portal-Sollwert
+  und nicht als physisch bestätigter Istwert beschrieben.
+- Deaktivierte, ausgewählte und lediglich gespeicherte Timer nun
+  explizit anhand der Portal-Flags beschrieben; fehlende Aktivierungsflags
+  werden als unbekannt ausgewiesen.
+- G2T-Zeitfenster: Bereits gespeicherte Minuteneinstellungen aus der
+  AlphaESS-App werden ohne Rundung angezeigt. Schreibvorgänge bleiben
+  bis zu einem erfolgreichen API-Praxistest auf Viertelstunden begrenzt,
+  entsprechend der Weboberfläche.
+- Automatisierte Regressionstests für die Hinweise und minutengenaue
+  Zeitvalidierung ergänzt.
+
+
 ## 0.5.7
 
 - Ersetzt die Auswahl des Abfrageintervalls durch ein Zahlenfeld (30–300 Sekunden in 30-Sekunden-Schritten); die G1T-/G2T-Standardwerte bleiben 120 beziehungsweise 30 Sekunden.

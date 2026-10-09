@@ -25,6 +25,9 @@ from .entity import (
     AlphaESSWallboxEntity,
     settings_object,
     time_period,
+    scheduled_charging_selected,
+    time_period_selected,
+    time_period_status,
 )
 
 
@@ -101,6 +104,18 @@ class AlphaESSWallboxStrategySelect(AlphaESSWallboxEntity, SelectEntity):
         value = self.settings.get("chargeStrategy")
         return next((name for name, strategy in STRATEGIES.items() if strategy == value), None)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, str | bool]:
+        return {
+            "Zeitgesteuertes Laden ausgewählt": scheduled_charging_selected(self.coordinator),
+            "Hinweis": (
+                "Gespeicherte Zeitfenster werden beim Wechsel zu Manuell oder "
+                "Plug and Play nicht gelöscht. Die Integration zeigt nur die "
+                "Ladeeinstellung aus dem AlphaESS-Portal; eine tatsächliche "
+                "Wirkung der Zeitfenster ist damit nicht nachgewiesen."
+            ),
+        }
+
     async def async_select_option(self, option: str) -> None:
         if option not in STRATEGIES:
             raise HomeAssistantError("Unbekannte Ladeeinstellung")
@@ -164,6 +179,15 @@ class AlphaESSTimePeriodModeSelect(AlphaESSWallboxEntity, SelectEntity):
         super().__init__(coordinator, entry, f"time_period_{index + 1}_mode")
         self._index = index
         self._attr_name = f"Zeitrahmen {index + 1} Lademodus"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, bool]:
+        return {
+            "Zeitfenster laut Portal-Modus ausgewählt": time_period_selected(
+                self.coordinator, self._index
+            ),
+            "Zeitfenster-Status": time_period_status(self.coordinator, self._index)
+        }
 
     @property
     def available(self) -> bool:

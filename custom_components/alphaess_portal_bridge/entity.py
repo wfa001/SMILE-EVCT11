@@ -73,6 +73,49 @@ def time_period(coordinator: AlphaESSWallboxCoordinator, index: int) -> dict[str
     period = periods[index]
     return period if isinstance(period, dict) else {}
 
+def scheduled_charging_selected(coordinator: AlphaESSWallboxCoordinator) -> bool:
+    """Whether G2T reports the scheduled charging strategy as selected.
+
+    This is the *portal configuration*, not proof that the wallbox has applied
+    a schedule at the hardware level.
+    """
+    generation, settings = settings_object(coordinator)
+    return generation == "g2T" and settings.get("chargeStrategy") == 1
+
+
+def time_period_selected(coordinator: AlphaESSWallboxCoordinator, index: int) -> bool:
+    """Whether a configured time period is enabled in scheduled mode.
+
+    Other strategies retain the saved periods so switching back to scheduled
+    charging does not destroy the user's previous time configuration.
+    """
+    return (
+        scheduled_charging_selected(coordinator)
+        and time_period(coordinator, index).get("isEnable") is True
+    )
+
+
+def time_period_status(coordinator: AlphaESSWallboxCoordinator, index: int) -> str:
+    """Describe stored schedule activation without claiming physical execution."""
+    generation, settings = settings_object(coordinator)
+    if generation != "g2T":
+        return "Nicht verfügbar"
+
+    period = time_period(coordinator, index)
+    enabled = period.get("isEnable")
+    if not isinstance(enabled, bool):
+        return "Unbekannt (Aktivierungsstatus fehlt)"
+
+    if not enabled:
+        return "Deaktiviert (Zeiten bleiben gespeichert)"
+
+    strategy = settings.get("chargeStrategy")
+    if strategy == 1:
+        return "Im Zeitplan aktiviert (laut Portal)"
+    if strategy in {0, 2}:
+        return "Gespeichert, aber Zeitsteuerung nicht ausgewählt"
+    return "Unbekannt (Ladeeinstellung fehlt)"
+
 
 class AlphaESSWallboxEntity(CoordinatorEntity[AlphaESSWallboxCoordinator]):
     """Base entity for the AlphaESS wallbox."""

@@ -22,7 +22,11 @@ Dies ist ein Community-Projekt und keine offizielle AlphaESS-Integration. Die G2
 - OBC-Phasenwahl **1 / 2 / 3**
 - Smart Mode mit Schutzprüfungen
 - drei Zeitrahmen mit Aktivierung, Start, Ende, Lademodus und Maximalstrom
-- Zeitwerte im vom Portal verwendeten **15-Minuten-Raster**
+- **Zeitfenster:** Die Weboberfläche bietet nur das **15-Minuten-Raster**,
+  die AlphaESS-App nach Tester-Rückmeldung minutengenaue Eingabe.
+  Die Integration liest bereits gespeicherte `HH:MM`-Werte ohne Rundung,
+  erlaubt beim Schreiben über die Portal-API vorsichtshalber weiterhin
+  nur Viertelstunden bis ein minutengenauer API-Schreibtest erfolgreich ist
 - Hausstrom-Einstellung **25–1000 A**
 - Installateursteuerung und Kabel-Selbstverriegelung
 - Hardware-, Software-, Modell- und Profildiagnose
@@ -33,6 +37,71 @@ Der Diagnose-Sensor **Portal-Profil** zeigt das erkannte Profil und das dazugeh�
 ### G1T
 
 Die bestehende G1T-Erkennung und -Konfiguration bleibt erhalten. Die G2T-spezifischen Schutzregeln greifen nicht in den G1T-Pfad ein.
+
+## Hinweise aus dem Testerfeedback
+
+- **Unterschied Webportal / App:** Die App kann Zeiten minutengenau
+  eintragen, während die Weboberfläche nur Viertelstunden anbietet.
+  Daraus lässt sich nicht sicher ableiten, ob der für diese Integration
+  genutzte PATCH-Endpunkt beliebige Minuten annimmt. Daher werden
+  minutengenaue App-Werte weiterhin unverändert angezeigt und beim
+  Ändern anderer Felder nicht bewusst gerundet; neue Zeitänderungen
+  bleiben bis zum gesonderten API-Test im 15-Minuten-Raster.
+- **Zeitfenster und Plug and Play:** Der im Portal gespeicherte Zeitplan
+  bleibt beim Wechsel zwischen Manuell, Zeitgesteuertem Aufladen und Plug and
+  Play erhalten. Die Entitäten unterscheiden jetzt zwischen
+  **deaktiviertem Zeitfenster**, **im Zeitplan aktiviertem Zeitfenster** und
+  **gespeichert, aber nicht ausgewählt**. Die gespeicherten Uhrzeiten bleiben
+  auch bei `isEnable: false` sichtbar. Die tatsächliche Wirksamkeit muss
+  weiterhin an der Wallbox geprüft werden. Die Integration schaltet beim
+  Wechsel zu Plug and Play **keine** Zeitrahmen ungefragt aus.
+- **API-Sollwert und tatsächlicher Ladestrom:** Die Entität
+  `Ladestrom (kundenspezifisch)` meldet den im Portal gespeicherten Sollwert,
+  keine physisch bestätigte Umsetzung. Die Ladereaktion kann verzögert sein;
+  für den tatsächlichen Betrieb die Live-Leistung und ggf. ein externes
+  Messgerät beobachten.
+- **Änderungen aus App/Portal:** Sie werden durch die normalen
+  Integrationsabfragen erkannt. Die zusätzliche 3-Sekunden-Rücklesung nach
+  einem **von Home Assistant gesendeten** Schreibbefehl gilt nicht für
+  Änderungen, die ausschließlich aus der AlphaESS-App kommen.
+
+### Häufige Fragen zum Testerfeedback
+
+**Woran erkenne ich deaktivierte Zeitfenster?** Die Entität
+`Zeitrahmen N Aktiv` zeigt den gespeicherten Portal-Schalter `isEnable`.
+Das Statusattribut **Zeitfenster-Status** unterscheidet ausdrücklich zwischen
+deaktiviert, im Zeitplan aktiviert und lediglich gespeichert. Wenn die
+Portal-Antwort keinen verlässlichen Aktivierungswert enthält, steht dort
+`Unbekannt`. Alte Uhrzeiten allein beweisen keine aktive Zeitsteuerung.
+
+**Warum werden Änderungen aus der App nicht sofort in Home Assistant sichtbar?**
+Änderungen direkt in der App werden durch das normale Polling eingelesen
+(G2T standardmäßig 30 s; in den Optionen einstellbar). Cloud-Verzögerungen
+sind zusätzlich möglich. Die 3-Sekunden-Rücklesung wird nur bei einem
+**Home-Assistant-Schreibbefehl** ausgelöst und bestätigt keinen physisch
+abgeschlossenen Ladevorgang.
+
+**Was geschieht bei Cloud- oder Internetausfall?** Diese Integration verwendet
+die AlphaESS-Portal-API, keinen lokalen Steuerkanal. Sie kann bei Ausfall
+der Cloud **nicht** verlässlich von Manuell zu Plug and Play wechseln und
+keine lokale Abschaltsicherheit oder SoC-Abschaltung garantieren. Eine
+Stromunterbrechung ist kein dokumentierter Reset auf Plug and Play.
+Für sicherheitskritische Ladebedingungen ist eine unabhängige, entsprechend
+geprüfte Lösung erforderlich.
+
+**Wie installiere ich Updates?** Über HACS das benutzerdefinierte Repository
+hinzufügen und veröffentlichte Releases aktualisieren; nach einem Update
+Home Assistant neu starten. Bei manueller Installation nur den
+Integrationsordner `custom_components/alphaess_portal_bridge/` kopieren,
+nicht das gesamte Git-Repository. Das aktuell ausgewählte Release kann
+von neuesten Änderungen auf `main` abweichen.
+
+**Installateursteuerung und Kabelverriegelung:** Die verfügbaren
+Konfigurationsfelder werden aus dem Portal übernommen. Der genaue Umfang
+der Installateursteuerung ist nicht vollständig dokumentiert.
+`gunLineSelfLockEnable` bezeichnet die Selbstverriegelungs-Einstellung
+**an der Wallbox**; eine automatische Verriegelung im Fahrzeug ist damit
+nicht bestätigt.
 
 ## G2T-Schutzlogik
 
