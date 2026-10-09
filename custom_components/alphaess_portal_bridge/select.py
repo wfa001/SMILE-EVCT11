@@ -27,6 +27,7 @@ from .entity import (
     time_period,
     scheduled_charging_selected,
     time_period_selected,
+    time_period_status,
 )
 
 
@@ -184,7 +185,8 @@ class AlphaESSTimePeriodModeSelect(AlphaESSWallboxEntity, SelectEntity):
         return {
             "Zeitfenster laut Portal-Modus ausgewählt": time_period_selected(
                 self.coordinator, self._index
-            )
+            ),
+            "Zeitfenster-Status": time_period_status(self.coordinator, self._index)
         }
 
     @property
