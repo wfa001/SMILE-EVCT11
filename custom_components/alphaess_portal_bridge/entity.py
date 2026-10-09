@@ -95,6 +95,28 @@ def time_period_selected(coordinator: AlphaESSWallboxCoordinator, index: int) ->
     )
 
 
+def time_period_status(coordinator: AlphaESSWallboxCoordinator, index: int) -> str:
+    """Describe stored schedule activation without claiming physical execution."""
+    generation, settings = settings_object(coordinator)
+    if generation != "g2T":
+        return "Nicht verfügbar"
+
+    period = time_period(coordinator, index)
+    enabled = period.get("isEnable")
+    if not isinstance(enabled, bool):
+        return "Unbekannt (Aktivierungsstatus fehlt)"
+
+    if not enabled:
+        return "Deaktiviert (Zeiten bleiben gespeichert)"
+
+    strategy = settings.get("chargeStrategy")
+    if strategy == 1:
+        return "Im Zeitplan aktiviert (laut Portal)"
+    if strategy in {0, 2}:
+        return "Gespeichert, aber Zeitsteuerung nicht ausgewählt"
+    return "Unbekannt (Ladeeinstellung fehlt)"
+
+
 class AlphaESSWallboxEntity(CoordinatorEntity[AlphaESSWallboxCoordinator]):
     """Base entity for the AlphaESS wallbox."""
 
