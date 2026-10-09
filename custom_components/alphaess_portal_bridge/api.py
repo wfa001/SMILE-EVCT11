@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import copy
+from collections.abc import Callable
 from functools import wraps
 import hashlib
 import re
@@ -98,6 +99,7 @@ class AlphaESSPortalApi:
         self._session = async_get_clientsession(hass)
         self._settings_write_lock = asyncio.Lock()
         self._charge_current_request_id = 0
+        self._settings_written_callback: Callable[[], None] | None = None
         self._username = config[CONF_USERNAME]
         self._password = config[CONF_PASSWORD]
         self._system_serial = config[CONF_SYSTEM_SERIAL]
@@ -110,6 +112,12 @@ class AlphaESSPortalApi:
         self._report_items_cache: list[dict[str, Any]] = []
         self._report_cache_until = 0.0
         self._report_cache_date: str | None = None
+
+    def set_settings_written_callback(
+        self, callback: Callable[[], None] | None
+    ) -> None:
+        """Register a non-blocking UI refresh notification after PATCH."""
+        self._settings_written_callback = callback
 
     async def async_validate_login(self) -> None:
         """Validate access to the configured AlphaESS system."""
@@ -618,6 +626,11 @@ class AlphaESSPortalApi:
                     raise AuthenticationError(step)
                 if response.status not in (200, 201, 204):
                     raise PortalConnectionError(response.status, step)
+                if self._settings_written_callback is not None:
+                    # The portal accepted the write, but the physical wallbox
+                    # may take another 20–30 seconds to apply the setting.
+                    # Schedule a read-back without delaying this API call.
+                    self._settings_written_callback()
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise PortalConnectionError from err
 
