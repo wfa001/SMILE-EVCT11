@@ -129,7 +129,7 @@ class MinuteTimeEntityTests(unittest.IsolatedAsyncioTestCase):
         entity = SimpleNamespace(
             coordinator=coordinator, _boundary="start", _index=0
         )
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(HomeAssistantError, "15-Minuten-Raster"):
             await async_set_value(entity, time(8, 7))
         self.assertEqual(coordinator.writes, [])
         self.assertEqual(coordinator.refreshes, 0)
