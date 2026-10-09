@@ -456,8 +456,14 @@ class AlphaESSPortalApi:
 
     @staticmethod
     def _validate_hhmm(value: str) -> None:
-        if not re.fullmatch(r"(?:[01]\d|2[0-3]):(?:00|15|30|45)", value):
-            raise ValueError("Zeiten sind nur im 15-Minuten-Raster erlaubt (HH:00, HH:15, HH:30 oder HH:45)")
+        # The current AlphaESS app allows minute-precise schedule times.
+        # The cloud endpoint has not yet been hardware-tested with non-quarter
+        # hour values. Reject invalid times locally; surface portal errors
+        # instead of silently snapping a user's requested time to a quarter.
+        if not isinstance(value, str) or not re.fullmatch(
+            r"(?:[01]\d|2[0-3]):[0-5]\d", value
+        ):
+            raise ValueError("Ungültige Uhrzeit. Bitte HH:MM (00:00–23:59) verwenden.")
 
     @staticmethod
     def _settings_from_wallbox(wallbox: dict[str, Any]) -> tuple[str | None, dict[str, Any] | None]:
