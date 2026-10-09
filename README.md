@@ -34,6 +34,24 @@ Der Diagnose-Sensor **Portal-Profil** zeigt das erkannte Profil und das dazugeh�
 
 Die bestehende G1T-Erkennung und -Konfiguration bleibt erhalten. Die G2T-spezifischen Schutzregeln greifen nicht in den G1T-Pfad ein.
 
+## Hinweise aus dem Testerfeedback
+
+- **Zeitfenster und Plug and Play:** Der im Portal gespeicherte Zeitplan
+  bleibt beim Wechsel zwischen Manuell, Zeitgesteuertem Aufladen und Plug and
+  Play erhalten. Die Entitäten kennzeichnen nun, ob der Zeitplan laut aktuell
+  gewählter *Ladeeinstellung* verwendet wird. Die tatsächliche Wirksamkeit
+  muss weiterhin an der Wallbox geprüft werden; es werden keine Zeitrahmen
+  automatisch ausgeschaltet oder gelöscht.
+- **API-Sollwert und tatsächlicher Ladestrom:** Die Entität
+  `Ladestrom (kundenspezifisch)` meldet den im Portal gespeicherten Sollwert,
+  keine physisch bestätigte Umsetzung. Die Ladereaktion kann verzögert sein;
+  für den tatsächlichen Betrieb die Live-Leistung und ggf. ein externes
+  Messgerät beobachten.
+- **Änderungen aus App/Portal:** Sie werden durch die normalen
+  Integrationsabfragen erkannt. Die zusätzliche 3-Sekunden-Rücklesung nach
+  einem **von Home Assistant gesendeten** Schreibbefehl gilt nicht für
+  Änderungen, die ausschließlich aus der AlphaESS-App kommen.
+
 ## G2T-Schutzlogik
 
 ### Laden starten und stoppen
