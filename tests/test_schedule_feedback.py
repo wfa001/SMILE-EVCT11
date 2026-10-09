@@ -27,6 +27,7 @@ def extract_helpers():
         "time_period",
         "scheduled_charging_selected",
         "time_period_selected",
+        "time_period_status",
     }
     functions = [
         node for node in source.body
@@ -108,6 +109,7 @@ class TesterFeedbackScheduleTests(unittest.TestCase):
         attrs = get_attributes("switch.py", "AlphaESSTimePeriodSwitch", self_object)
         self.assertFalse(attrs["Zeitfenster laut Portal-Modus ausgewählt"])
         self.assertIn("Plug and Play", attrs["Hinweis"])
+        self.assertIn("nicht ausgewählt", attrs["Zeitfenster-Status"])
         self.assertEqual(co.data, before)
 
     def test_time_fields_and_modes_retain_saved_values(self):
@@ -120,6 +122,28 @@ class TesterFeedbackScheduleTests(unittest.TestCase):
                 self_object = SimpleNamespace(coordinator=co, _index=0)
                 attrs = get_attributes(filename, classname, self_object)
                 self.assertTrue(attrs["Zeitfenster laut Portal-Modus ausgewählt"])
+
+    def test_status_distinguishes_deactivated_from_non_selected(self):
+        checks = [
+            (1, True, "Im Zeitplan aktiviert"),
+            (1, False, "Deaktiviert"),
+            (2, True, "nicht ausgewählt"),
+            (0, True, "nicht ausgewählt"),
+        ]
+        for strategy, enabled, text in checks:
+            with self.subTest(strategy=strategy, enabled=enabled):
+                co = make_coordinator(strategy=strategy, enabled=enabled)
+                self.assertIn(text, NS["time_period_status"](co, 0))
+
+    def test_missing_enable_flag_does_not_claim_inactive(self):
+        co = make_coordinator(strategy=1, enabled=True)
+        del co.data["configuration"]["evCharger"][0]["g2T"]["timePeriods"][0]["isEnable"]
+        self.assertIn("Unbekannt", NS["time_period_status"](co, 0))
+        attrs = get_attributes(
+            "switch.py", "AlphaESSTimePeriodSwitch",
+            SimpleNamespace(coordinator=co, _index=0),
+        )
+        self.assertIn("Unbekannt", attrs["Zeitfenster-Status"])
 
     def test_strategy_select_indicates_when_schedule_is_not_selected(self):
         for strategy, selected in [(1, True), (2, False)]:
