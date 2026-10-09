@@ -9,8 +9,10 @@
 - Deaktivierte, ausgewählte und lediglich gespeicherte Timer nun
   explizit anhand der Portal-Flags beschrieben; fehlende Aktivierungsflags
   werden als unbekannt ausgewiesen.
-- G2T-Zeitprüfung von Viertelstunden auf minutengenaues `HH:MM` erweitert
-  (noch nicht an einer realen Wallbox/Portal-API validiert).
+- G2T-Zeitfenster: Bereits gespeicherte Minuteneinstellungen aus der
+  AlphaESS-App werden ohne Rundung angezeigt. Schreibvorgänge bleiben
+  bis zu einem erfolgreichen API-Praxistest auf Viertelstunden begrenzt,
+  entsprechend der Weboberfläche.
 - Automatisierte Regressionstests für die Hinweise und minutengenaue
   Zeitvalidierung ergänzt.
 
