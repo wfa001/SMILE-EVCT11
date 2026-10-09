@@ -22,9 +22,11 @@ Dies ist ein Community-Projekt und keine offizielle AlphaESS-Integration. Die G2
 - OBC-Phasenwahl **1 / 2 / 3**
 - Smart Mode mit Schutzprüfungen
 - drei Zeitrahmen mit Aktivierung, Start, Ende, Lademodus und Maximalstrom
-- **Minutengenaue** Zeitwerte (HH:MM, z. B. 08:07): nach aktueller
-  Tester-Rückmeldung in der AlphaESS-App möglich; die Übernahme solcher
-  Werte durch die Portal-API muss noch praktisch bestätigt werden
+- **Zeitfenster:** Die Weboberfläche bietet nur das **15-Minuten-Raster**,
+  die AlphaESS-App nach Tester-Rückmeldung minutengenaue Eingabe.
+  Die Integration liest bereits gespeicherte `HH:MM`-Werte ohne Rundung,
+  erlaubt beim Schreiben über die Portal-API vorsichtshalber weiterhin
+  nur Viertelstunden bis ein minutengenauer API-Schreibtest erfolgreich ist
 - Hausstrom-Einstellung **25–1000 A**
 - Installateursteuerung und Kabel-Selbstverriegelung
 - Hardware-, Software-, Modell- und Profildiagnose
@@ -38,6 +40,13 @@ Die bestehende G1T-Erkennung und -Konfiguration bleibt erhalten. Die G2T-spezifi
 
 ## Hinweise aus dem Testerfeedback
 
+- **Unterschied Webportal / App:** Die App kann Zeiten minutengenau
+  eintragen, während die Weboberfläche nur Viertelstunden anbietet.
+  Daraus lässt sich nicht sicher ableiten, ob der für diese Integration
+  genutzte PATCH-Endpunkt beliebige Minuten annimmt. Daher werden
+  minutengenaue App-Werte weiterhin unverändert angezeigt und beim
+  Ändern anderer Felder nicht bewusst gerundet; neue Zeitänderungen
+  bleiben bis zum gesonderten API-Test im 15-Minuten-Raster.
 - **Zeitfenster und Plug and Play:** Der im Portal gespeicherte Zeitplan
   bleibt beim Wechsel zwischen Manuell, Zeitgesteuertem Aufladen und Plug and
   Play erhalten. Die Entitäten unterscheiden jetzt zwischen
