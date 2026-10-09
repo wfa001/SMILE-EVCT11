@@ -1,4 +1,4 @@
-"""Test minute-precision G2T times without hardware or Home Assistant.
+"""Guard web-portal quarter-hour writes and preserve app minute-time readings.
 
 The production methods are compiled from the integration source via AST
 so validation and UI forwarding cannot silently diverge.
@@ -42,6 +42,7 @@ def load_method(filename, classname, name):
         "HomeAssistantError": HomeAssistantError,
         "AuthenticationError": AuthenticationError,
         "PortalConnectionError": PortalConnectionError,
+        "time_period": lambda coordinator, index: coordinator.periods[index],
     }
     exec(compile(program, str(file), "exec"), namespace)
     return namespace[name]
@@ -61,6 +62,7 @@ class PortalConnectionError(Exception):
 
 validate_hhmm = load_method("api.py", "AlphaESSPortalApi", "_validate_hhmm")
 async_set_value = load_method("time.py", "AlphaESSTimePeriodTime", "async_set_value")
+native_value = load_method("time.py", "AlphaESSTimePeriodTime", "native_value")
 
 
 class StubCoordinator:
@@ -79,10 +81,16 @@ class StubCoordinator:
 
 
 class MinuteValidationTests(unittest.TestCase):
-    def test_accepts_any_valid_minute(self):
-        for hhmm in ("00:00", "00:01", "08:07", "13:19", "23:59", "17:30"):
+    def test_accepts_currently_verified_web_portal_quarter_hours(self):
+        for hhmm in ("00:00", "08:15", "13:30", "23:45", "17:00"):
             with self.subTest(value=hhmm):
                 self.assertIsNone(validate_hhmm(hhmm))
+
+    def test_rejects_unverified_app_only_minute_writes(self):
+        for value in ("00:01", "08:07", "13:19", "23:59"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "15-Minuten-Raster"):
+                    validate_hhmm(value)
 
     def test_rejects_invalid_time_strings(self):
         for value in ("24:00", "12:60", "8:07", "12:00:00", "99:59",
@@ -91,21 +99,40 @@ class MinuteValidationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     validate_hhmm(value)
 
+    def test_previously_saved_app_minute_is_read_without_rounding(self):
+        coordinator = SimpleNamespace(
+            periods=[{"startTime": "08:07", "endTime": "21:59"}]
+        )
+        begin = SimpleNamespace(coordinator=coordinator, _index=0, _boundary="start")
+        end = SimpleNamespace(coordinator=coordinator, _index=0, _boundary="end")
+        self.assertEqual(native_value(begin), time(8, 7))
+        self.assertEqual(native_value(end), time(21, 59))
+
 
 class MinuteTimeEntityTests(unittest.IsolatedAsyncioTestCase):
-    async def test_forwards_exact_minute_for_start_and_end(self):
+    async def test_forwards_quarter_hour_times_without_changes(self):
         coordinator = StubCoordinator()
-        for boundary, moment in (("start", time(8, 7)), ("end", time(21, 59))):
+        for boundary, moment in (("start", time(8, 15)), ("end", time(21, 45))):
             with self.subTest(boundary=boundary):
                 entity = SimpleNamespace(
                     coordinator=coordinator, _boundary=boundary, _index=1
                 )
                 await async_set_value(entity, moment)
         self.assertEqual(coordinator.writes, [
-            (1, {"start_time": "08:07"}),
-            (1, {"end_time": "21:59"}),
+            (1, {"start_time": "08:15"}),
+            (1, {"end_time": "21:45"}),
         ])
         self.assertEqual(coordinator.refreshes, 2)
+
+    async def test_unverified_minute_writes_are_rejected(self):
+        coordinator = StubCoordinator()
+        entity = SimpleNamespace(
+            coordinator=coordinator, _boundary="start", _index=0
+        )
+        with self.assertRaises(ValueError):
+            await async_set_value(entity, time(8, 7))
+        self.assertEqual(coordinator.writes, [])
+        self.assertEqual(coordinator.refreshes, 0)
 
     async def test_does_not_silently_truncate_seconds(self):
         coordinator = StubCoordinator()
