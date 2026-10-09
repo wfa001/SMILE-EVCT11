@@ -6,7 +6,13 @@
   Zeitfenster klargestellt. Gespeicherte Zeiträume bleiben unangetastet.
 - Der benutzerdefinierte Ladestrom wird ausdrücklich als Portal-Sollwert
   und nicht als physisch bestätigter Istwert beschrieben.
-- Automatisierte Regressionstests für die Hinweise ergänzt.
+- Deaktivierte, ausgewählte und lediglich gespeicherte Timer nun
+  explizit anhand der Portal-Flags beschrieben; fehlende Aktivierungsflags
+  werden als unbekannt ausgewiesen.
+- G2T-Zeitprüfung von Viertelstunden auf minutengenaues `HH:MM` erweitert
+  (noch nicht an einer realen Wallbox/Portal-API validiert).
+- Automatisierte Regressionstests für die Hinweise und minutengenaue
+  Zeitvalidierung ergänzt.
 
 
 ## 0.5.7
