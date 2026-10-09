@@ -10,7 +10,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import copy
+from collections.abc import Callable
+from functools import wraps
 import hashlib
+import logging
 import re
 import time
 from typing import Any
@@ -29,6 +32,8 @@ from .const import (
     CONF_USERNAME,
     CONF_WALLBOX_SERIAL,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 PORTAL_HEADERS = {
     "Tenant": "alphaess",
@@ -54,11 +59,50 @@ class PortalConnectionError(Exception):
         super().__init__(f"Portal request failed during {step}: {status}")
 
 
+def _serialize_settings_write(method):
+    """Serialize settings updates; coalesce only queued current-only requests.
+
+    Once a PATCH has started it cannot safely be cancelled: the portal might
+    accept the request despite a client-side cancellation or timeout. A newer
+    charge-current request supersedes older *waiting* requests, not an
+    in-flight write. No artificial delay is added to wallbox commands.
+    """
+
+    @wraps(method)
+    async def wrapped(self, *args, **kwargs):
+        request_id = None
+        if (
+            method.__name__ == "async_update_wallbox_settings"
+            and len(kwargs) == 1
+            and "charge_current" in kwargs
+            and isinstance(kwargs["charge_current"], int)
+            and not isinstance(kwargs["charge_current"], bool)
+            and 6 <= kwargs["charge_current"] <= 16
+        ):
+            self._charge_current_request_id += 1
+            request_id = self._charge_current_request_id
+
+        async with self._settings_write_lock:
+            if (
+                request_id is not None
+                and request_id != self._charge_current_request_id
+            ):
+                # The user requested a newer current while this call waited.
+                # Only drop a request which never began its portal transaction.
+                return
+            return await method(self, *args, **kwargs)
+
+    return wrapped
+
+
 class AlphaESSPortalApi:
     """Keep an AlphaESS customer-portal session in memory."""
 
     def __init__(self, hass: HomeAssistant, config: dict[str, Any]) -> None:
         self._session = async_get_clientsession(hass)
+        self._settings_write_lock = asyncio.Lock()
+        self._charge_current_request_id = 0
+        self._settings_written_callback: Callable[[], None] | None = None
         self._username = config[CONF_USERNAME]
         self._password = config[CONF_PASSWORD]
         self._system_serial = config[CONF_SYSTEM_SERIAL]
@@ -71,6 +115,12 @@ class AlphaESSPortalApi:
         self._report_items_cache: list[dict[str, Any]] = []
         self._report_cache_until = 0.0
         self._report_cache_date: str | None = None
+
+    def set_settings_written_callback(
+        self, callback: Callable[[], None] | None
+    ) -> None:
+        """Register a non-blocking UI refresh notification after PATCH."""
+        self._settings_written_callback = callback
 
     async def async_validate_login(self) -> None:
         """Validate access to the configured AlphaESS system."""
@@ -257,6 +307,7 @@ class AlphaESSPortalApi:
             step="wallbox control",
         )
 
+    @_serialize_settings_write
     async def async_update_wallbox_settings(
         self,
         *,
@@ -345,10 +396,15 @@ class AlphaESSPortalApi:
                 raise ValueError("Diese Wallbox unterstützt keine Kabel-Selbstverriegelung")
             settings["gunLineSelfLockEnable"] = bool(gun_line_self_lock_enabled)
 
+        # Avoid an unnecessary remote write if the requested configuration
+        # already matches the freshly fetched portal document.
+        if payload == configuration:
+            return
         await self._async_authenticated_patch(
             f"/internal/v1/ess/{self._system_serial}", payload, step="wallbox settings"
         )
 
+    @_serialize_settings_write
     async def async_update_time_period(
         self,
         index: int,
@@ -392,6 +448,8 @@ class AlphaESSPortalApi:
                 raise ValueError("Der Ladestrom muss zwischen 6 und 16 A liegen")
             period["chargeCurrent"] = charge_current
 
+        if payload == configuration:
+            return
         await self._async_authenticated_patch(
             f"/internal/v1/ess/{self._system_serial}", payload, step="time period settings"
         )
@@ -571,6 +629,16 @@ class AlphaESSPortalApi:
                     raise AuthenticationError(step)
                 if response.status not in (200, 201, 204):
                     raise PortalConnectionError(response.status, step)
+                if self._settings_written_callback is not None:
+                    # The portal accepted the write, but the physical wallbox
+                    # may take another 20–30 seconds to apply the setting.
+                    # Schedule a read-back without delaying this API call.
+                    try:
+                        self._settings_written_callback()
+                    except Exception:
+                        # The PATCH succeeded; a notification failure must not
+                        # falsely report a failed write to Home Assistant.
+                        _LOGGER.exception("Unable to schedule AlphaESS settings read-back")
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise PortalConnectionError from err
 
