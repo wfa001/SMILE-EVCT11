@@ -13,6 +13,7 @@ import copy
 from collections.abc import Callable
 from functools import wraps
 import hashlib
+import logging
 import re
 import time
 from typing import Any
@@ -31,6 +32,8 @@ from .const import (
     CONF_USERNAME,
     CONF_WALLBOX_SERIAL,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 PORTAL_HEADERS = {
     "Tenant": "alphaess",
@@ -630,7 +633,12 @@ class AlphaESSPortalApi:
                     # The portal accepted the write, but the physical wallbox
                     # may take another 20–30 seconds to apply the setting.
                     # Schedule a read-back without delaying this API call.
-                    self._settings_written_callback()
+                    try:
+                        self._settings_written_callback()
+                    except Exception:
+                        # The PATCH succeeded; a notification failure must not
+                        # falsely report a failed write to Home Assistant.
+                        _LOGGER.exception("Unable to schedule AlphaESS settings read-back")
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise PortalConnectionError from err
 
