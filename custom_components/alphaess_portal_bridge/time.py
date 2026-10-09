@@ -19,7 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .api import AuthenticationError, PortalConnectionError
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
-from .entity import AlphaESSWallboxEntity, time_period
+from .entity import AlphaESSWallboxEntity, time_period, time_period_selected
 
 
 async def async_setup_entry(
@@ -54,6 +54,9 @@ class AlphaESSTimePeriodTime(AlphaESSWallboxEntity, TimeEntity):
     def extra_state_attributes(self) -> dict[str, str]:
         return {
             "Hinweis": "Nur Viertelstunden sind erlaubt: Minute 00, 15, 30 oder 45.",
+            "Zeitfenster laut Portal-Modus ausgewählt": time_period_selected(
+                self.coordinator, self._index
+            ),
         }
 
     @property
