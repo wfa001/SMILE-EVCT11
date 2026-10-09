@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import copy
+from functools import wraps
 import hashlib
 import re
 import time
@@ -54,11 +55,23 @@ class PortalConnectionError(Exception):
         super().__init__(f"Portal request failed during {step}: {status}")
 
 
+def _serialize_settings_write(method):
+    """Keep each portal settings GET-modify-PATCH transaction atomic locally."""
+
+    @wraps(method)
+    async def wrapped(self, *args, **kwargs):
+        async with self._settings_write_lock:
+            return await method(self, *args, **kwargs)
+
+    return wrapped
+
+
 class AlphaESSPortalApi:
     """Keep an AlphaESS customer-portal session in memory."""
 
     def __init__(self, hass: HomeAssistant, config: dict[str, Any]) -> None:
         self._session = async_get_clientsession(hass)
+        self._settings_write_lock = asyncio.Lock()
         self._username = config[CONF_USERNAME]
         self._password = config[CONF_PASSWORD]
         self._system_serial = config[CONF_SYSTEM_SERIAL]
@@ -257,6 +270,7 @@ class AlphaESSPortalApi:
             step="wallbox control",
         )
 
+    @_serialize_settings_write
     async def async_update_wallbox_settings(
         self,
         *,
@@ -349,6 +363,7 @@ class AlphaESSPortalApi:
             f"/internal/v1/ess/{self._system_serial}", payload, step="wallbox settings"
         )
 
+    @_serialize_settings_write
     async def async_update_time_period(
         self,
         index: int,
