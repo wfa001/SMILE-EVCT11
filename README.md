@@ -22,7 +22,9 @@ Dies ist ein Community-Projekt und keine offizielle AlphaESS-Integration. Die G2
 - OBC-Phasenwahl **1 / 2 / 3**
 - Smart Mode mit Schutzprüfungen
 - drei Zeitrahmen mit Aktivierung, Start, Ende, Lademodus und Maximalstrom
-- Zeitwerte im vom Portal verwendeten **15-Minuten-Raster**
+- **Minutengenaue** Zeitwerte (HH:MM, z. B. 08:07): nach aktueller
+  Tester-Rückmeldung in der AlphaESS-App möglich; die Übernahme solcher
+  Werte durch die Portal-API muss noch praktisch bestätigt werden
 - Hausstrom-Einstellung **25–1000 A**
 - Installateursteuerung und Kabel-Selbstverriegelung
 - Hardware-, Software-, Modell- und Profildiagnose
@@ -38,10 +40,12 @@ Die bestehende G1T-Erkennung und -Konfiguration bleibt erhalten. Die G2T-spezifi
 
 - **Zeitfenster und Plug and Play:** Der im Portal gespeicherte Zeitplan
   bleibt beim Wechsel zwischen Manuell, Zeitgesteuertem Aufladen und Plug and
-  Play erhalten. Die Entitäten kennzeichnen nun, ob der Zeitplan laut aktuell
-  gewählter *Ladeeinstellung* verwendet wird. Die tatsächliche Wirksamkeit
-  muss weiterhin an der Wallbox geprüft werden; es werden keine Zeitrahmen
-  automatisch ausgeschaltet oder gelöscht.
+  Play erhalten. Die Entitäten unterscheiden jetzt zwischen
+  **deaktiviertem Zeitfenster**, **im Zeitplan aktiviertem Zeitfenster** und
+  **gespeichert, aber nicht ausgewählt**. Die gespeicherten Uhrzeiten bleiben
+  auch bei `isEnable: false` sichtbar. Die tatsächliche Wirksamkeit muss
+  weiterhin an der Wallbox geprüft werden. Die Integration schaltet beim
+  Wechsel zu Plug and Play **keine** Zeitrahmen ungefragt aus.
 - **API-Sollwert und tatsächlicher Ladestrom:** Die Entität
   `Ladestrom (kundenspezifisch)` meldet den im Portal gespeicherten Sollwert,
   keine physisch bestätigte Umsetzung. Die Ladereaktion kann verzögert sein;
@@ -51,6 +55,44 @@ Die bestehende G1T-Erkennung und -Konfiguration bleibt erhalten. Die G2T-spezifi
   Integrationsabfragen erkannt. Die zusätzliche 3-Sekunden-Rücklesung nach
   einem **von Home Assistant gesendeten** Schreibbefehl gilt nicht für
   Änderungen, die ausschließlich aus der AlphaESS-App kommen.
+
+### Häufige Fragen zum Testerfeedback
+
+**Woran erkenne ich deaktivierte Zeitfenster?** Die Entität
+`Zeitrahmen N Aktiv` zeigt den gespeicherten Portal-Schalter `isEnable`.
+Das Statusattribut **Zeitfenster-Status** unterscheidet ausdrücklich zwischen
+deaktiviert, im Zeitplan aktiviert und lediglich gespeichert. Wenn die
+Portal-Antwort keinen verlässlichen Aktivierungswert enthält, steht dort
+`Unbekannt`. Alte Uhrzeiten allein beweisen keine aktive Zeitsteuerung.
+
+**Warum werden Änderungen aus der App nicht sofort in Home Assistant sichtbar?**
+Änderungen direkt in der App werden durch das normale Polling eingelesen
+(G2T standardmäßig 30 s; in den Optionen einstellbar). Cloud-Verzögerungen
+sind zusätzlich möglich. Die 3-Sekunden-Rücklesung wird nur bei einem
+**Home-Assistant-Schreibbefehl** ausgelöst und bestätigt keinen physisch
+abgeschlossenen Ladevorgang.
+
+**Was geschieht bei Cloud- oder Internetausfall?** Diese Integration verwendet
+die AlphaESS-Portal-API, keinen lokalen Steuerkanal. Sie kann bei Ausfall
+der Cloud **nicht** verlässlich von Manuell zu Plug and Play wechseln und
+keine lokale Abschaltsicherheit oder SoC-Abschaltung garantieren. Eine
+Stromunterbrechung ist kein dokumentierter Reset auf Plug and Play.
+Für sicherheitskritische Ladebedingungen ist eine unabhängige, entsprechend
+geprüfte Lösung erforderlich.
+
+**Wie installiere ich Updates?** Über HACS das benutzerdefinierte Repository
+hinzufügen und veröffentlichte Releases aktualisieren; nach einem Update
+Home Assistant neu starten. Bei manueller Installation nur den
+Integrationsordner `custom_components/alphaess_portal_bridge/` kopieren,
+nicht das gesamte Git-Repository. Das aktuell ausgewählte Release kann
+von neuesten Änderungen auf `main` abweichen.
+
+**Installateursteuerung und Kabelverriegelung:** Die verfügbaren
+Konfigurationsfelder werden aus dem Portal übernommen. Der genaue Umfang
+der Installateursteuerung ist nicht vollständig dokumentiert.
+`gunLineSelfLockEnable` bezeichnet die Selbstverriegelungs-Einstellung
+**an der Wallbox**; eine automatische Verriegelung im Fahrzeug ist damit
+nicht bestätigt.
 
 ## G2T-Schutzlogik
 
