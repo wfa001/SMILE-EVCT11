@@ -19,7 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .api import AuthenticationError, PortalConnectionError
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
-from .entity import AlphaESSWallboxEntity, time_period, time_period_selected
+from .entity import AlphaESSWallboxEntity, time_period, time_period_selected, time_period_status
 
 
 async def async_setup_entry(
@@ -57,6 +57,7 @@ class AlphaESSTimePeriodTime(AlphaESSWallboxEntity, TimeEntity):
             "Zeitfenster laut Portal-Modus ausgewählt": time_period_selected(
                 self.coordinator, self._index
             ),
+            "Zeitfenster-Status": time_period_status(self.coordinator, self._index),
         }
 
     @property
