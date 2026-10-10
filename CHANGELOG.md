@@ -1,5 +1,17 @@
 # Changelog
 
+## Noch nicht veröffentlicht – minutengenaue G2T-Zeitschreibung
+
+- G2T-Zeitfenster können jetzt minutengenau (HH:MM, 00:00–23:59)
+  über die Portal-API geändert werden; keine Rundung auf Viertelstunden.
+- Praxisbestätigung vom 10.10.2026: PATCH 08:07–09:23 → HTTP 204;
+  gespeicherte Zeiten anschließend in AlphaESS-App und Home Assistant
+  korrekt angezeigt (ohne Fahrzeug; Ladeausführung nicht geprüft).
+- Time-Entitäten und Validierungstests auf Minuteneingabe umgestellt.
+- AlphaESS-Hinweis zu überlappenden Zeitfenstern ergänzt; keine Änderung
+  an Prioritäten, Ladeprogrammen oder nativer PV-/Smart-Mode-Regelung.
+- Keine Änderung der Integrations-/Release-Version; Maintainer entscheidet.
+
 ## Noch nicht veröffentlicht – Testerfeedback
 
 - Anzeige der gewählten Ladeeinstellung und der laut Portal-Modus ausgewählten
