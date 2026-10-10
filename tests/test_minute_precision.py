@@ -1,4 +1,4 @@
-"""Guard web-portal quarter-hour writes and preserve app minute-time readings.
+"""Validate minute-precise portal writes and preserve app minute-time readings.
 
 The production methods are compiled from the integration source via AST
 so validation and UI forwarding cannot silently diverge.
@@ -81,18 +81,12 @@ class StubCoordinator:
 
 
 class MinuteValidationTests(unittest.TestCase):
-    def test_accepts_currently_verified_web_portal_quarter_hours(self):
-        for hhmm in ("00:00", "08:15", "13:30", "23:45", "17:00"):
+    def test_accepts_quarter_hours_and_all_minute_values(self):
+        for hhmm in ("00:00", "08:07", "09:23", "13:19", "17:00", "23:59", "23:45"):
             with self.subTest(value=hhmm):
                 self.assertIsNone(validate_hhmm(hhmm))
 
-    def test_rejects_unverified_app_only_minute_writes(self):
-        for value in ("00:01", "08:07", "13:19", "23:59"):
-            with self.subTest(value=value):
-                with self.assertRaisesRegex(ValueError, "15-Minuten-Raster"):
-                    validate_hhmm(value)
-
-    def test_rejects_invalid_time_strings(self):
+        def test_rejects_invalid_time_strings(self):
         for value in ("24:00", "12:60", "8:07", "12:00:00", "99:59",
                       "-1:00", "", None, "07:3", "18:99"):
             with self.subTest(value=value):
@@ -110,29 +104,28 @@ class MinuteValidationTests(unittest.TestCase):
 
 
 class MinuteTimeEntityTests(unittest.IsolatedAsyncioTestCase):
-    async def test_forwards_quarter_hour_times_without_changes(self):
+    async def test_forwards_minute_precise_times_without_changes(self):
         coordinator = StubCoordinator()
-        for boundary, moment in (("start", time(8, 15)), ("end", time(21, 45))):
+        for boundary, moment in (("start", time(8, 7)), ("end", time(21, 59))):
             with self.subTest(boundary=boundary):
                 entity = SimpleNamespace(
                     coordinator=coordinator, _boundary=boundary, _index=1
                 )
                 await async_set_value(entity, moment)
         self.assertEqual(coordinator.writes, [
-            (1, {"start_time": "08:15"}),
-            (1, {"end_time": "21:45"}),
+            (1, {"start_time": "08:07"}),
+            (1, {"end_time": "21:59"}),
         ])
         self.assertEqual(coordinator.refreshes, 2)
 
-    async def test_unverified_minute_writes_are_rejected(self):
+    async def test_minute_writes_are_accepted(self):
         coordinator = StubCoordinator()
         entity = SimpleNamespace(
             coordinator=coordinator, _boundary="start", _index=0
         )
-        with self.assertRaisesRegex(HomeAssistantError, "15-Minuten-Raster"):
-            await async_set_value(entity, time(8, 7))
-        self.assertEqual(coordinator.writes, [])
-        self.assertEqual(coordinator.refreshes, 0)
+        await async_set_value(entity, time(8, 7))
+        self.assertEqual(coordinator.writes, [(0, {"start_time": "08:07"})])
+        self.assertEqual(coordinator.refreshes, 1)
 
     async def test_does_not_silently_truncate_seconds(self):
         coordinator = StubCoordinator()
