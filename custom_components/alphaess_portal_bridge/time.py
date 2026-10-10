@@ -48,15 +48,15 @@ class AlphaESSTimePeriodTime(AlphaESSWallboxEntity, TimeEntity):
         super().__init__(coordinator, entry, f"time_period_{index + 1}_{boundary}")
         self._index = index
         self._boundary = boundary
-        self._attr_name = f"Zeitrahmen {index + 1} {'Beginn' if boundary == 'start' else 'Ende'} (15-Min.-Eingabe)"
+        self._attr_name = f"Zeitrahmen {index + 1} {'Beginn' if boundary == 'start' else 'Ende'} (minutengenau)"
 
     @property
     def extra_state_attributes(self) -> dict[str, str | bool]:
         return {
             "Hinweis": (
-                "Gespeicherte App-Zeiten werden minutengenau angezeigt. "
-                "Neue Zeitänderungen über die Portal-API sind vorerst nur in "
-                "15-Minuten-Schritten freigegeben."
+                "Zeitfenster können minutengenau angezeigt und geschrieben werden. "
+                "Bei Überschneidungen führt AlphaESS laut Portalhinweis "
+                "den aktuell laufenden Lademodus weiter."
             ),
             "Zeitfenster laut Portal-Modus ausgewählt": time_period_selected(
                 self.coordinator, self._index
