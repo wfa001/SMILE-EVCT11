@@ -456,18 +456,16 @@ class AlphaESSPortalApi:
 
     @staticmethod
     def _validate_hhmm(value: str) -> None:
-        # Portal web UI accepts 15-minute steps, while the mobile app can
-        # set minute-precise times. Until a non-quarter-hour PATCH through
-        # *this* endpoint is verified, keep writes constrained to the
-        # established web-portal behavior. Reading existing times remains
-        # minute-precise and must not round app-created times.
+        # Verified on G2T SMILE-G3-EVCT11/S (2026-10-10):
+        # minute-precise PATCH 08:07–09:23 returned HTTP 204 and was
+        # read back in both AlphaESS app and Home Assistant.
+        # Reject malformed/out-of-range times and never round.
         if not isinstance(value, str) or not re.fullmatch(
-            r"(?:[01]\d|2[0-3]):(?:00|15|30|45)", value
+            r"(?:[01]\d|2[0-3]):[0-5]\d", value
         ):
             raise ValueError(
-                "Zeitänderungen über die Portal-API sind derzeit nur im "
-                "15-Minuten-Raster freigegeben (HH:00/15/30/45). "
-                "Die AlphaESS-App kann minutengenaue Zeiten einstellen."
+                "Ungültige Uhrzeit: Bitte HH:MM zwischen 00:00 und 23:59 "
+                "ohne Sekunden eingeben."
             )
 
     @staticmethod

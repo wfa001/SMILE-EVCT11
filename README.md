@@ -22,11 +22,12 @@ Dies ist ein Community-Projekt und keine offizielle AlphaESS-Integration. Die G2
 - OBC-Phasenwahl **1 / 2 / 3**
 - Smart Mode mit Schutzprüfungen
 - drei Zeitrahmen mit Aktivierung, Start, Ende, Lademodus und Maximalstrom
-- **Zeitfenster:** Die Weboberfläche bietet nur das **15-Minuten-Raster**,
-  die AlphaESS-App nach Tester-Rückmeldung minutengenaue Eingabe.
-  Die Integration liest bereits gespeicherte `HH:MM`-Werte ohne Rundung,
-  erlaubt beim Schreiben über die Portal-API vorsichtshalber weiterhin
-  nur Viertelstunden bis ein minutengenauer API-Schreibtest erfolgreich ist
+- **Zeitfenster:** Minutengenaue `HH:MM`-Werte können über die
+  Portal-API gelesen und geschrieben werden, obwohl die AlphaESS-Weboberfläche
+  nur ein 15-Minuten-Raster anbietet. Bestätigt durch einen G2T-Praxistest
+  vom 10.10.2026 mit 08:07–09:23 (PATCH HTTP 204, Werte in App und
+  Home Assistant zurückgelesen). Die tatsächliche zeitgesteuerte
+  Ladeausführung mit angeschlossenem Fahrzeug wurde dabei nicht geprüft
 - Hausstrom-Einstellung **25–1000 A**
 - Installateursteuerung und Kabel-Selbstverriegelung
 - Hardware-, Software-, Modell- und Profildiagnose
@@ -40,13 +41,18 @@ Die bestehende G1T-Erkennung und -Konfiguration bleibt erhalten. Die G2T-spezifi
 
 ## Hinweise aus dem Testerfeedback
 
-- **Unterschied Webportal / App:** Die App kann Zeiten minutengenau
-  eintragen, während die Weboberfläche nur Viertelstunden anbietet.
-  Daraus lässt sich nicht sicher ableiten, ob der für diese Integration
-  genutzte PATCH-Endpunkt beliebige Minuten annimmt. Daher werden
-  minutengenaue App-Werte weiterhin unverändert angezeigt und beim
-  Ändern anderer Felder nicht bewusst gerundet; neue Zeitänderungen
-  bleiben bis zum gesonderten API-Test im 15-Minuten-Raster.
+- **Unterschied Webportal / App:** Die App erlaubt minutengenaue
+  Eingaben, die Weboberfläche zeigt nur Viertelstunden-Schritte.
+  Der tatsächliche PATCH-Endpunkt akzeptierte am 10.10.2026
+  08:07–09:23 (HTTP 204); beide Werte wurden in der App und in
+  Home Assistant korrekt zurückgelesen. Die Integration akzeptiert
+  deshalb jetzt Minutenwerte von 00 bis 59; Sekunden bleiben unzulässig.
+  Der Test bestätigt das Speichern, nicht die physische Ausführung.
+- **Überlappende Zeitfenster:** AlphaESS beschreibt das Verhalten so:
+  „Wenn die Lademodi zur gleichen Zeit kollidieren, führt das System
+  den aktuellen Lademodus weiter aus.“ Die Integration legt keine
+  zusätzliche Prioritätsregel fest. Verhalten beim Ende eines
+  überlappenden Zeitfensters ist für G2T nicht praktisch bestätigt.
 - **Zeitfenster und Plug and Play:** Der im Portal gespeicherte Zeitplan
   bleibt beim Wechsel zwischen Manuell, Zeitgesteuertem Aufladen und Plug and
   Play erhalten. Die Entitäten unterscheiden jetzt zwischen
