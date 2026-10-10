@@ -86,7 +86,7 @@ class MinuteValidationTests(unittest.TestCase):
             with self.subTest(value=hhmm):
                 self.assertIsNone(validate_hhmm(hhmm))
 
-        def test_rejects_invalid_time_strings(self):
+    def test_rejects_invalid_time_strings(self):
         for value in ("24:00", "12:60", "8:07", "12:00:00", "99:59",
                       "-1:00", "", None, "07:3", "18:99"):
             with self.subTest(value=value):
