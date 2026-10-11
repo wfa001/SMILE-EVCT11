@@ -101,6 +101,10 @@ class AlphaESSPortalApi:
     def __init__(self, hass: HomeAssistant, config: dict[str, Any]) -> None:
         self._session = async_get_clientsession(hass)
         self._settings_write_lock = asyncio.Lock()
+        self._live_status_lock = asyncio.Lock()
+        self._live_status_cache: dict[str, Any] | None = None
+        self._live_status_cached_at = 0.0
+        self._live_status_cached_serial: str | None = None
         self._charge_current_request_id = 0
         self._settings_written_callback: Callable[[], None] | None = None
         self._username = config[CONF_USERNAME]
@@ -133,6 +137,28 @@ class AlphaESSPortalApi:
             step="system check",
         )
 
+    async def async_get_live_status(self, wallbox_serial: str) -> dict[str, Any]:
+        """Read live G2T values without fetching settings or charging reports.
+
+        A brief shared cache avoids duplicate GETs when a full refresh happens
+        at the same moment as a five-second live refresh.
+        """
+        async with self._live_status_lock:
+            if (
+                self._live_status_cached_serial == wallbox_serial
+                and self._live_status_cache is not None
+                and time.monotonic() - self._live_status_cached_at < 3
+            ):
+                return copy.deepcopy(self._live_status_cache)
+            status = await self._async_get(
+                f"/internal/v1/ev-charger/{wallbox_serial}/real-status",
+                step="wallbox status",
+            )
+            self._live_status_cache = copy.deepcopy(status)
+            self._live_status_cached_serial = wallbox_serial
+            self._live_status_cached_at = time.monotonic()
+            return status
+
     async def async_get_wallbox_data(self) -> dict[str, Any]:
         """Read wallbox configuration, live state and the latest charge report."""
         system = await self._async_get(
@@ -158,10 +184,7 @@ class AlphaESSPortalApi:
 
         if wallbox_serial:
             try:
-                wallbox_status = await self._async_get(
-                    f"/internal/v1/ev-charger/{wallbox_serial}/real-status",
-                    step="wallbox status",
-                )
+                wallbox_status = await self.async_get_live_status(wallbox_serial)
                 wallbox_status_source = "real_status"
             except PortalConnectionError as err:
                 # 409 is returned by some portal states when live status is not
