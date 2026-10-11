@@ -154,6 +154,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if entry.title != desired_title:
         hass.config_entries.async_update_entry(entry, title=desired_title)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    coordinator.start_live_polling()
     return True
 
 
@@ -164,4 +165,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator = hass.data[DOMAIN].pop(entry.entry_id, None)
         if coordinator is not None:
             coordinator.stop_followup_refresh()
+            coordinator.stop_live_polling()
     return unload_ok
