@@ -83,3 +83,11 @@
 
 ### 0.5.1–0.5.3
 - grundlegende G2T-Erkennung, Status-, Lade-, OBC-, Zeitrahmen- und Energieentitäten aufgebaut.
+
+
+### Unreleased – G2T faster live status (draft)
+
+- Add an isolated, read-only 5-second live-status refresh for G2T; leave full configuration polling and charge-report caching unchanged.
+- Reuse a brief cache for overlapping live-status reads, and apply backoff after errors (120 seconds for HTTP 429/auth failures).
+- Keep G1T, existing controls and native AlphaESS PV Smart Mode unaffected.
+- Add mock regression tests. Real Home Assistant smoke testing and maintainer review are still required.
