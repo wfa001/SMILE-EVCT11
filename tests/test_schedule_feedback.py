@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -35,7 +36,21 @@ def extract_helpers():
     ]
     assert {f.name for f in functions} == wanted
     module = ast.fix_missing_locations(ast.Module(body=functions, type_ignores=[]))
-    namespace = {"Any": Any, "AlphaESSWallboxCoordinator": object}
+    schedule_file = COMPONENT / "schedule.py"
+    schedule_ast = ast.parse(schedule_file.read_text(encoding="utf-8"))
+    schedule_nodes = [
+        node for node in schedule_ast.body
+        if isinstance(node, (ast.FunctionDef, ast.Assign))
+    ]
+    namespace = {"Any": Any, "AlphaESSWallboxCoordinator": object, "re": re}
+    exec(
+        compile(
+            ast.fix_missing_locations(ast.Module(body=schedule_nodes, type_ignores=[])),
+            str(schedule_file),
+            "exec",
+        ),
+        namespace,
+    )
     exec(compile(module, str(COMPONENT / "entity.py"), "exec"), namespace)
     return namespace
 
