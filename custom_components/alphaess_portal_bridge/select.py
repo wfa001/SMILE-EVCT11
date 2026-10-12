@@ -17,6 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .api import AuthenticationError, PortalConnectionError
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
+from .schedule import schedule_supported
 from .entity import (
     G1_MODES,
     G2_MODES,
@@ -64,7 +65,7 @@ class AlphaESSWallboxModeSelect(AlphaESSWallboxEntity, SelectEntity):
         generation, settings = settings_object(self.coordinator)
         # The portal hides the global Lademodus while G2T is controlled by
         # time periods.  Mirror that behavior instead of showing "unknown".
-        return super().available and not (generation == "g2T" and settings.get("chargeStrategy") == 1)
+        return super().available and not (schedule_supported(generation, settings) and settings.get("chargeStrategy") == 1)
 
     @property
     def current_option(self) -> str | None:
@@ -86,7 +87,7 @@ class AlphaESSWallboxModeSelect(AlphaESSWallboxEntity, SelectEntity):
 
 
 class AlphaESSWallboxStrategySelect(AlphaESSWallboxEntity, SelectEntity):
-    """G2T charging strategy: manual, schedule or plug-and-play."""
+    """Charging strategy for G2T and schema-compatible G1T."""
 
     _attr_name = "Ladeeinstellung"
     _attr_options = list(STRATEGIES)
@@ -97,7 +98,7 @@ class AlphaESSWallboxStrategySelect(AlphaESSWallboxEntity, SelectEntity):
 
     @property
     def available(self) -> bool:
-        return super().available and self.settings_generation == "g2T"
+        return super().available and schedule_supported(self.settings_generation, self.settings)
 
     @property
     def current_option(self) -> str | None:
@@ -191,7 +192,7 @@ class AlphaESSTimePeriodModeSelect(AlphaESSWallboxEntity, SelectEntity):
 
     @property
     def available(self) -> bool:
-        return super().available and self.settings_generation == "g2T" and bool(time_period(self.coordinator, self._index))
+        return super().available and schedule_supported(self.settings_generation, self.settings) and bool(time_period(self.coordinator, self._index))
 
     @property
     def current_option(self) -> str | None:
