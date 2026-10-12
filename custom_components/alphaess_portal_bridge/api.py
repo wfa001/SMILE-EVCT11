@@ -363,6 +363,11 @@ class AlphaESSPortalApi:
             allowed_modes = {1, 2, 3, 4}
             if charge_mode not in allowed_modes:
                 raise ValueError("Nicht unterstützter Lademodus")
+            if generation == "g1T" and (
+                type(settings.get("chargeMode")) is not int
+                or settings["chargeMode"] not in {0, 1, 2, 3, 4}
+            ):
+                raise ValueError("G1T Lademodus ist im Portal nicht bestätigt")
             if generation == "g2T" and settings.get("smartMode") is True and charge_mode == 4:
                 raise ValueError("Smart Mode benötigt Langsamladung, Schonladung oder Schnellladung")
             settings["chargeMode"] = charge_mode
@@ -370,6 +375,11 @@ class AlphaESSPortalApi:
         if charge_current is not None:
             if not 6 <= charge_current <= 16:
                 raise ValueError("Der Ladestrom muss zwischen 6 und 16 A liegen")
+            if generation == "g1T" and (
+                type(settings.get("chargeCurrent")) is not int
+                or not 6 <= settings["chargeCurrent"] <= 16
+            ):
+                raise ValueError("G1T Ladestrom ist im Portal nicht bestätigt")
             settings["chargeCurrent"] = charge_current
 
         if charge_strategy is not None:
