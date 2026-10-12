@@ -19,7 +19,16 @@ def load_helpers():
     module = ast.parse(source.read_text(encoding="utf-8"))
     names = {"_present_fields", "_bool_capability", "_period_schema", "async_get_config_entry_diagnostics"}
     subset = ast.Module(
-        body=[node for node in module.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names],
+        body=[
+            node for node in module.body
+            if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names)
+            or (isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id in {
+                    "_WALLBOX_FIELDS", "_COMMON_SETTINGS", "_G2T_SETTINGS",
+                    "_LIVE_FIELDS", "_REPORT_FIELDS"
+                } for target in node.targets
+            ))
+        ],
         type_ignores=[],
     )
     class FakePortal:
