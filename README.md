@@ -37,7 +37,19 @@ Der Diagnose-Sensor **Portal-Profil** zeigt das erkannte Profil und das dazugeh�
 
 ### G1T
 
-Die bestehende G1T-Erkennung und -Konfiguration bleibt erhalten. Die G2T-spezifischen Schutzregeln greifen nicht in den G1T-Pfad ein.
+Die bestehende G1T-Erkennung und -Konfiguration bleibt erhalten. **OBC-Phasenwahl und Smart Mode werden bei der G1T nicht angeboten.** Der globale ECO-Lademodus (Wert `0`) bleibt erhalten.
+
+**Experimentelle Zeitsteuerung (für G1T noch nicht mit echter Hardware verifiziert):** Die bereits vorhandenen drei G2T-Zeitfenster-Entitäten werden bei G1T nur dann angezeigt, wenn das AlphaESS-Portal *alle* folgenden Daten bereits bereitstellt:
+
+- `chargeStrategy` als numerische Einstellung `0`, `1` oder `2`;
+- `timePeriods` als Liste mit mindestens drei vollständigen Zeitfenstern;
+- pro Zeitfenster `isEnable` (boolesch), `startTime` und `endTime` (gültiges `HH:MM`), `chargeMode` (`1`–`4`) und `chargeCurrent` (`6`–`16` A).
+
+**Wichtig:** Dieses Datenformat ist nur von der G2T belegt. Identische App-Oberflächen allein beweisen nicht, dass die G1T dieselbe API-Datenstruktur verwendet. Fehlt das Format, sind G1T-Zeitplanung und Strategieauswahl nicht verfügbar; es werden **keine fehlenden Felder erzeugt und keine versuchsweisen Einstellungen geschrieben**. Auch bei sichtbaren Bedienelementen kontrolliert die API das aktuelle Portal-Dokument vor *jedem* Schreibvorgang erneut. Die drei Zeitfenster unterstützen testweise dieselben Lademodi `1`–`4`; ECO `0` innerhalb von Zeitfenstern ist noch nicht nachgewiesen.
+
+Im Home-Assistant-Diagnoseexport zeigt `wallbox_schema.g1t_schedule_schema_matches` als `true` oder `false`, ob die G1T-Datenstruktur zum bekannten Format passt. Die Diagnose enthält dafür nur freigegebene Feldnamen und Statusangaben, keine kompletten Portalantworten.
+
+Für den ersten Test bitte **zuerst nur Diagnose herunterladen**, danach – falls die Entitäten sichtbar sind – einen einzelnen Zeitrahmen bei nicht ladender Wallbox ändern, in der AlphaESS-App gegenprüfen und die tatsächliche Wirkung erst gesondert prüfen. Keine wiederholten Schreibversuche bei Fehlern.
 
 ## Hinweise aus dem Testerfeedback
 
@@ -142,7 +154,8 @@ Bei unerwartetem Verhalten zuerst die AlphaESS-App oder das Portal prüfen. Die 
 ## Polling
 
 - Wallbox- und Konfigurationsdaten: Eingabefeld **30–300 Sekunden** in **30-Sekunden-Schritten**
-- Standard: **G1T 120 Sekunden**, **G2T 30 Sekunden**
+- Standard: **G1T 30 Sekunden**, **G2T 30 Sekunden** (vorhandene Benutzeroptionen bleiben erhalten)
+- Separater Live-Status bei unterstütztem Portal-Endpunkt: ungefähr **5 Sekunden** für G1T und G2T; bei nicht unterstütztem G1T-Endpunkt wird dieser schnelle Abruf gestoppt, während die reguläre Aktualisierung weiterläuft
 - Energiebericht: gecacht und höchstens etwa alle **5 Minuten** neu abgefragt
 
 Kurze Übergangszustände der Wallbox können zwischen zwei Abfragen liegen und in Home Assistant unsichtbar bleiben.
@@ -201,6 +214,6 @@ Zugangsdaten, Tokens und persönliche Daten aus Logs entfernen. Seriennummern f�
 
 ### Faster G2T live values (development branch)
 
-G2T wallboxes refresh the read-only portal `real-status` endpoint approximately every **5 seconds**, independently of the normal system/configuration refresh (30 seconds by default). This updates charging power, status, plug/lock state and the live energy fields without repeatedly loading settings and report history. A 3-second shared response cache also avoids duplicate status requests close to normal refreshes. G1T polling stays unchanged.
+G2T wallboxes refresh the read-only portal `real-status` endpoint approximately every **5 seconds**, independently of the normal system/configuration refresh (30 seconds by default). This updates charging power, status, plug/lock state and the live energy fields without repeatedly loading settings and report history. A 3-second shared response cache also avoids duplicate status requests close to normal refreshes. G1T also attempts guarded five-second live polling when the endpoint is supported; otherwise it keeps regular configuration polling.
 
 The five-second interval is based on short read-only portal tests; it is **not** an official AlphaESS rate-limit guarantee. On connection errors the live reader backs off; authentication errors and HTTP 429 use a longer 120-second pause. No live GET is automatically repeated and no charge-control, schedules or Smart Mode logic was changed. AlphaESS has been observed to refresh cloud power values about every ten seconds, so five-second polling primarily lowers Home Assistant's additional detection delay.
