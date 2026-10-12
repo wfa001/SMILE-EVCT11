@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 
 from .api import AlphaESSPortalApi
 from .const import DOMAIN
+from .schedule import g1t_schedule_schema_matches
 
 # Exact known schema fields only. Unknown fields are never exported.
 _WALLBOX_FIELDS = (
@@ -19,6 +20,7 @@ _WALLBOX_FIELDS = (
     "softwareVersion", "hardwareVersion", "startUpPower",
 )
 _COMMON_SETTINGS = ("chargeMode", "chargeCurrent")
+_G1T_SCHEDULE_FIELDS = ("chargeStrategy", "timePeriods")
 _G2T_SETTINGS = (
     "chargeStrategy", "obcPhase", "smartMode", "timePeriods",
     "isSupportGunLineSelfLock", "gunLineSelfLockEnable",
@@ -103,10 +105,13 @@ async def async_get_config_entry_diagnostics(
         "wallbox_schema": {
             "fields": _present_fields(wallbox, _WALLBOX_FIELDS),
             "settings_fields": _present_fields(
-                settings, _COMMON_SETTINGS + (_G2T_SETTINGS if generation == "g2T" else ())
+                settings, _COMMON_SETTINGS + (_G2T_SETTINGS if generation == "g2T" else _G1T_SCHEDULE_FIELDS if generation == "g1T" else ())
             ),
             "automatic_cable_lock": _bool_capability(settings, "isSupportGunLineSelfLock"),
             "time_periods": _period_schema(settings),
+            "g1t_schedule_schema_matches": (
+                g1t_schedule_schema_matches(settings) if generation == "g1T" else None
+            ),
         },
         "live_data": {
             "source": "real_status" if data.get("wallbox_status_source") == "real_status" else "system_or_unknown",
