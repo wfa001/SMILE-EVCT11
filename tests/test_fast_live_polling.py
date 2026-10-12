@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import time
 from pathlib import Path
 import unittest
 from typing import Any
@@ -82,6 +83,7 @@ def load_methods():
         "_G2T_LIVE_INTERVAL_SECONDS": 5,
         "_G2T_LIVE_MAX_BACKOFF_SECONDS": 120,
         "_LOGGER": Logger(),
+        "time": time,
     }
     exec(compile(ast.fix_missing_locations(ast.Module(body=[cls], type_ignores=[])),
                  str(SOURCE), "exec"), namespace)
@@ -95,6 +97,7 @@ class FakeAPI:
     def __init__(self):
         self.statuses = []
         self.request_count = 0
+        self._live_status_unavailable_serials = set()
 
     async def async_get_live_status(self, serial):
         self.request_count += 1
