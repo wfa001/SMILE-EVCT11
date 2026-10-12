@@ -1,4 +1,4 @@
-"""Tests for isolated five-second G2T live polling, without Home Assistant."""
+"""Tests for isolated five-second G1T/G2T live polling, without Home Assistant."""
 from __future__ import annotations
 
 import ast
@@ -113,6 +113,7 @@ class FakeCoordinator(Coordinator):
         self._stopped = False
         self._live_refresh_cancel = None
         self._live_refresh_errors = 0
+        self._live_status_supported = None
         self._live_revision = 0
         self._latest_live_status = None
         self.notify_count = 0
@@ -136,9 +137,31 @@ class LiveRefreshTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item.notify_count, 1)
         self.assertEqual(calls[-1].delay, 5)
 
-    async def test_g1t_not_scheduled(self):
-        FakeCoordinator(generation="g1T").start_live_polling()
-        self.assertEqual(calls, [])
+    async def test_g1t_schedules_fast_poll_when_endpoint_works(self):
+        item = FakeCoordinator(generation="g1T")
+        item.api.statuses = [{"status": "Charging", "power": 800}]
+        item.start_live_polling()
+        self.assertEqual(calls[-1].delay, 5)
+        await calls[-1].execute()
+        self.assertEqual(item.data["wallbox_status"]["power"], 800)
+        self.assertTrue(item._live_status_supported)
+
+    async def test_g1t_unsupported_endpoint_falls_back_to_regular_poll(self):
+        item = FakeCoordinator(generation="g1T")
+        item.api.statuses = [PortalConnectionError(404)]
+        item.start_live_polling()
+        await calls[-1].execute()
+        self.assertFalse(item._live_status_supported)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(item.notify_count, 0)
+
+    async def test_g1t_empty_payload_disables_fast_poll(self):
+        item = FakeCoordinator(generation="g1T")
+        item.api.statuses = [{"some_unknown_field": "value"}]
+        item.start_live_polling()
+        await calls[-1].execute()
+        self.assertFalse(item._live_status_supported)
+        self.assertEqual(len(calls), 1)
 
     async def test_429_backs_off(self):
         item = FakeCoordinator()
