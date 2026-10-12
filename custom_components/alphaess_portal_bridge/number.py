@@ -119,7 +119,7 @@ class AlphaESSHouseholdCurrentNumber(AlphaESSWallboxEntity, NumberEntity):
 
 
 class AlphaESSTimePeriodCurrentNumber(_CurrentNumberBase):
-    """Custom current for one G2T schedule period."""
+    """Custom current for a compatible G1T/G2T schedule period."""
 
     def __init__(
         self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry, index: int
@@ -133,9 +133,10 @@ class AlphaESSTimePeriodCurrentNumber(_CurrentNumberBase):
         period = time_period(self.coordinator, self._index)
         return (
             super().available
-            and self.settings_generation == "g2T"
+            and self.settings_generation in {"g1T", "g2T"}
             and bool(period)
             and period.get("chargeMode") == 4
+            and (self.settings_generation == "g2T" or "chargeCurrent" in period)
         )
 
     @property
