@@ -88,12 +88,15 @@ def get_attributes(filename, classname, self_object):
 
 
 class TesterFeedbackScheduleTests(unittest.TestCase):
-    def test_schedule_selected_only_in_g2t_schedule_strategy(self):
+    def test_schedule_selected_for_reported_strategy_on_either_generation(self):
         for strategy, expected in [(0, False), (1, True), (2, False)]:
             with self.subTest(strategy=strategy):
                 co = make_coordinator(strategy=strategy)
                 self.assertIs(NS["scheduled_charging_selected"](co), expected)
-        self.assertFalse(NS["scheduled_charging_selected"](make_coordinator(generation="g1T")))
+        self.assertTrue(NS["scheduled_charging_selected"](make_coordinator(generation="g1T")))
+        missing = make_coordinator(generation="g1T")
+        del missing.data["configuration"]["evCharger"][0]["g1T"]["chargeStrategy"]
+        self.assertFalse(NS["scheduled_charging_selected"](missing))
 
     def test_period_requires_schedule_strategy_and_enabled_flag(self):
         self.assertTrue(NS["time_period_selected"](make_coordinator(1, True), 0))
