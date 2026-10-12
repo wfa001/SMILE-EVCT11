@@ -175,7 +175,7 @@ class FakePortal(ProductionMethods):
 
     @property
     def settings(self):
-        return self.wallbox["g2T"]
+        return self.wallbox.get("g2T", self.wallbox.get("g1T"))
 
 
 class SettingsWriteTests(unittest.IsolatedAsyncioTestCase):
@@ -292,6 +292,98 @@ class SettingsWriteTests(unittest.IsolatedAsyncioTestCase):
         await portal.async_update_wallbox_settings(charge_current=6)
         self.assertEqual(len(portal.patches), 1)
         self.assertEqual(portal.settings["chargeCurrent"], 6)
+
+
+def sample_g1t_configuration():
+    config = sample_configuration()
+    wallbox = config["evCharger"][0]
+    settings = wallbox.pop("g2T")
+    settings.pop("smartMode")
+    settings.pop("obcPhase")
+    settings.pop("gunLineSelfLockEnable")
+    settings.pop("isSupportGunLineSelfLock")
+    settings["chargeMode"] = 0  # Global G1T ECO mode is unchanged.
+    wallbox["g1T"] = settings
+    wallbox["model"] = "SMILE-EVCT11"
+    return config
+
+
+class G1TScheduleWriteTests(unittest.IsolatedAsyncioTestCase):
+    """The G1T experiment must only patch an already-known portal schema."""
+
+    def portal(self):
+        portal = FakePortal()
+        portal.configuration = sample_g1t_configuration()
+        return portal
+
+    async def test_full_g1t_schema_allows_strategy_and_period_updates(self):
+        portal = self.portal()
+        await portal.async_update_wallbox_settings(charge_strategy=1)
+        await portal.async_update_time_period(0, start_time="08:07")
+        await portal.async_update_time_period(1, charge_current=13)
+        self.assertEqual(portal.settings["chargeStrategy"], 1)
+        self.assertEqual(portal.settings["timePeriods"][0]["startTime"], "08:07")
+        self.assertEqual(portal.settings["timePeriods"][1]["chargeCurrent"], 13)
+        self.assertEqual(len(portal.patches), 3)
+        self.assertEqual(portal.settings["chargeMode"], 0)
+        self.assertNotIn("smartMode", portal.settings)
+        self.assertNotIn("obcPhase", portal.settings)
+        self.assertNotIn("g2T", portal.wallbox)
+
+    async def test_unknown_g1t_structure_never_patches(self):
+        for unknown in ("timePeriods", "chargeStrategy"):
+            portal = self.portal()
+            del portal.settings[unknown]
+            with self.subTest(unknown=unknown):
+                with self.assertRaises(ValueError):
+                    await portal.async_update_wallbox_settings(charge_strategy=1)
+                with self.assertRaises(ValueError):
+                    await portal.async_update_time_period(0, start_time="09:00")
+                self.assertEqual(portal.patches, [])
+
+    async def test_missing_period_field_blocks_every_g1t_schedule_write(self):
+        portal = self.portal()
+        del portal.settings["timePeriods"][2]["isEnable"]
+        with self.assertRaises(ValueError):
+            await portal.async_update_time_period(0, end_time="14:00")
+        with self.assertRaises(ValueError):
+            await portal.async_update_wallbox_settings(charge_strategy=1)
+        self.assertEqual(portal.patches, [])
+
+    async def test_invalid_mode_or_time_does_not_patch(self):
+        portal = self.portal()
+        portal.settings["timePeriods"][0]["chargeMode"] = 0
+        with self.assertRaises(ValueError):
+            await portal.async_update_time_period(0, enabled=False)
+        self.assertEqual(portal.patches, [])
+
+        portal = self.portal()
+        with self.assertRaises(ValueError):
+            await portal.async_update_time_period(0, start_time="24:01")
+        with self.assertRaises(ValueError):
+            await portal.async_update_time_period(0, charge_mode=0)
+        self.assertEqual(portal.patches, [])
+
+    async def test_g1t_cannot_enable_g2t_hardware_features(self):
+        portal = self.portal()
+        with self.assertRaises(ValueError):
+            await portal.async_update_wallbox_settings(obc_phase=1)
+        with self.assertRaises(ValueError):
+            await portal.async_update_wallbox_settings(smart_mode=True)
+        self.assertEqual(portal.patches, [])
+
+    async def test_no_op_and_write_lock_preserved_for_g1t(self):
+        portal = self.portal()
+        await portal.async_update_time_period(0, start_time="08:00")
+        self.assertEqual(portal.patches, [])
+        await asyncio.gather(
+            portal.async_update_time_period(0, start_time="09:15"),
+            portal.async_update_time_period(1, end_time="20:30"),
+        )
+        self.assertEqual(portal.max_active_patches, 1)
+        self.assertEqual(len(portal.patches), 2)
+        self.assertEqual(portal.settings["timePeriods"][0]["startTime"], "09:15")
+        self.assertEqual(portal.settings["timePeriods"][1]["endTime"], "20:30")
 
 
 if __name__ == "__main__":
