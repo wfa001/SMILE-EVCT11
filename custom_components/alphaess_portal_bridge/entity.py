@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_SYSTEM_SERIAL, DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
+from .schedule import schedule_supported
 
 G1_MODES = {
     "ECO-Ladung": 0,
@@ -65,7 +66,7 @@ def settings_object(coordinator: AlphaESSWallboxCoordinator) -> tuple[str | None
 
 def time_period(coordinator: AlphaESSWallboxCoordinator, index: int) -> dict[str, Any]:
     generation, settings = settings_object(coordinator)
-    if generation != "g2T":
+    if not schedule_supported(generation, settings):
         return {}
     periods = settings.get("timePeriods")
     if not isinstance(periods, list) or index < 0 or index >= len(periods):
@@ -74,13 +75,13 @@ def time_period(coordinator: AlphaESSWallboxCoordinator, index: int) -> dict[str
     return period if isinstance(period, dict) else {}
 
 def scheduled_charging_selected(coordinator: AlphaESSWallboxCoordinator) -> bool:
-    """Whether G2T reports the scheduled charging strategy as selected.
+    """Whether the portal reports a compatible scheduled charging strategy.
 
     This is the *portal configuration*, not proof that the wallbox has applied
     a schedule at the hardware level.
     """
     generation, settings = settings_object(coordinator)
-    return generation == "g2T" and settings.get("chargeStrategy") == 1
+    return schedule_supported(generation, settings) and settings.get("chargeStrategy") == 1
 
 
 def time_period_selected(coordinator: AlphaESSWallboxCoordinator, index: int) -> bool:
@@ -98,7 +99,7 @@ def time_period_selected(coordinator: AlphaESSWallboxCoordinator, index: int) ->
 def time_period_status(coordinator: AlphaESSWallboxCoordinator, index: int) -> str:
     """Describe stored schedule activation without claiming physical execution."""
     generation, settings = settings_object(coordinator)
-    if generation != "g2T":
+    if not schedule_supported(generation, settings):
         return "Nicht verfügbar"
 
     period = time_period(coordinator, index)
