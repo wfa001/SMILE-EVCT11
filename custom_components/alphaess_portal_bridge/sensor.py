@@ -50,9 +50,7 @@ async def async_setup_entry(
             AlphaESSYesNoSensor(coordinator, entry, "Ladestecker verriegelt", "gun_locked"),
             AlphaESSWallboxEnergySensor(coordinator, entry, "In dieser Sitzung geladen", "chargingAmount", "today_energy"),
             AlphaESSWallboxEnergySensor(coordinator, entry, "Letzter Ladeabschnitt", "lastChargingAmount", "last_energy"),
-            AlphaESSTodayChargeReportSensor(coordinator, entry),
             AlphaESSWallboxModeSensor(coordinator, entry),
-            AlphaESSLatestChargeReportSensor(coordinator, entry),
             AlphaESSWallboxGenerationSensor(coordinator, entry),
             AlphaESSWallboxInformationSensor(coordinator, entry, "Serialnummer", "sn"),
             AlphaESSWallboxInformationSensor(coordinator, entry, "Modell", "model"),
@@ -206,25 +204,6 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         }
 
 
-class AlphaESSTodayChargeReportSensor(AlphaESSWallboxEntity, SensorEntity):
-    """Sum of today's completed charge-report entries."""
-
-    _attr_name = "Heute laut Ladebericht"
-    _attr_device_class = SensorDeviceClass.ENERGY
-    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-
-    def __init__(self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "today_report_energy")
-
-    @property
-    def native_value(self) -> float | None:
-        value = (self.coordinator.data or {}).get("today_report_energy")
-        try:
-            return float(value) if value is not None else None
-        except (TypeError, ValueError):
-            return None
-
-
 class AlphaESSWallboxModeSensor(AlphaESSWallboxEntity, SensorEntity):
     """Configured charging mode; retained for compatibility with older versions."""
 
@@ -243,41 +222,6 @@ class AlphaESSWallboxModeSensor(AlphaESSWallboxEntity, SensorEntity):
             return "Zeitplanabhängig"
         value = settings.get("chargeMode")
         return next((name for name, mode in modes.items() if mode == value), None)
-
-
-class AlphaESSLatestChargeReportSensor(AlphaESSWallboxEntity, SensorEntity):
-    """Newest entry from the AlphaESS charge report."""
-
-    _attr_name = "Letzter Ladevorgang"
-    _attr_device_class = SensorDeviceClass.ENERGY
-    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-
-    def __init__(self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "latest_charge_report")
-
-    @property
-    def _report(self) -> dict[str, Any]:
-        report = (self.coordinator.data or {}).get("latest_report")
-        return report if isinstance(report, dict) else {}
-
-    @property
-    def native_value(self) -> float | None:
-        value = self._report.get("chargingCapacity")
-        try:
-            return float(value) if value is not None else None
-        except (TypeError, ValueError):
-            return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        work_model = self._report.get("chargingWorkModel")
-        return {
-            "start": self._report.get("beginDate"),
-            "ende": self._report.get("endDate"),
-            "arbeitsmodus": "Web/App aktiviert das Laden" if work_model == 1 else work_model,
-            "bemerkung": self._report.get("remarks", ""),
-            "bericht_id": self._report.get("id"),
-        }
 
 
 class AlphaESSWallboxGenerationSensor(AlphaESSWallboxEntity, SensorEntity):
