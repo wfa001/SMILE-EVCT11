@@ -19,7 +19,7 @@ def load_helpers():
     module = ast.parse(source.read_text(encoding="utf-8"))
     names = {"_present_fields", "_bool_capability", "_period_schema", "async_get_config_entry_diagnostics"}
     subset = ast.Module(
-        body=[node for node in module.body if isinstance(node, ast.FunctionDef) and node.name in names],
+        body=[node for node in module.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names],
         type_ignores=[],
     )
     class FakePortal:
