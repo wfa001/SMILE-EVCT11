@@ -19,6 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .api import AuthenticationError, PortalConnectionError
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
+from .schedule import schedule_supported
 from .entity import AlphaESSWallboxEntity, time_period, time_period_selected, time_period_status
 
 
@@ -34,7 +35,7 @@ async def async_setup_entry(
 
 
 class AlphaESSTimePeriodTime(AlphaESSWallboxEntity, TimeEntity):
-    """Start or end time for one G2T schedule period."""
+    """Start or end time for a verified-compatible portal schedule period."""
 
     _attr_entity_category = EntityCategory.CONFIG
 
@@ -66,7 +67,7 @@ class AlphaESSTimePeriodTime(AlphaESSWallboxEntity, TimeEntity):
 
     @property
     def available(self) -> bool:
-        return super().available and self.settings_generation == "g2T" and bool(time_period(self.coordinator, self._index))
+        return super().available and schedule_supported(self.settings_generation, self.settings) and bool(time_period(self.coordinator, self._index))
 
     @property
     def native_value(self) -> time | None:
