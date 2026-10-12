@@ -19,6 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .api import AuthenticationError, PortalConnectionError
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
+from .schedule import schedule_supported
 from .entity import AlphaESSWallboxEntity, time_period, time_period_selected, time_period_status
 
 
@@ -179,7 +180,7 @@ class AlphaESSTimePeriodSwitch(AlphaESSWallboxEntity, SwitchEntity):
 
     @property
     def available(self) -> bool:
-        return super().available and self.settings_generation == "g2T" and bool(time_period(self.coordinator, self._index))
+        return super().available and schedule_supported(self.settings_generation, self.settings) and bool(time_period(self.coordinator, self._index))
 
     @property
     def is_on(self) -> bool | None:
