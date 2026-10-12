@@ -151,7 +151,7 @@ class AlphaESSSmartModeSwitch(AlphaESSWallboxEntity, SwitchEntity):
 
 
 class AlphaESSTimePeriodSwitch(AlphaESSWallboxEntity, SwitchEntity):
-    """Enable or disable one G2T schedule period."""
+    """Enable a G2T or a schema-confirmed G1T schedule period."""
 
     _attr_entity_category = EntityCategory.CONFIG
 
@@ -179,7 +179,13 @@ class AlphaESSTimePeriodSwitch(AlphaESSWallboxEntity, SwitchEntity):
 
     @property
     def available(self) -> bool:
-        return super().available and self.settings_generation == "g2T" and bool(time_period(self.coordinator, self._index))
+        period = time_period(self.coordinator, self._index)
+        return (
+            super().available
+            and self.settings_generation in {"g1T", "g2T"}
+            and bool(period)
+            and (self.settings_generation == "g2T" or isinstance(period.get("isEnable"), bool))
+        )
 
     @property
     def is_on(self) -> bool | None:
