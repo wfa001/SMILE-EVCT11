@@ -17,6 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .api import AuthenticationError, PortalConnectionError
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
+from .schedule import schedule_supported
 from .entity import AlphaESSWallboxEntity, time_period
 
 
@@ -133,7 +134,7 @@ class AlphaESSTimePeriodCurrentNumber(_CurrentNumberBase):
         period = time_period(self.coordinator, self._index)
         return (
             super().available
-            and self.settings_generation == "g2T"
+            and schedule_supported(self.settings_generation, self.settings)
             and bool(period)
             and period.get("chargeMode") == 4
         )
