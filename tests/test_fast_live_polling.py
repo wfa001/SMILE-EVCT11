@@ -117,6 +117,13 @@ class FakeCoordinator(Coordinator):
         self._live_refresh_cancel = None
         self._live_refresh_errors = 0
         self._live_status_supported = None
+        self._live_success_count = 0
+        self._live_failure_count = 0
+        self._full_success_count = 0
+        self._full_failure_count = 0
+        self._live_last_http_status = None
+        self._live_last_duration_ms = None
+        self._full_last_duration_ms = None
         self._live_revision = 0
         self._latest_live_status = None
         self.notify_count = 0
