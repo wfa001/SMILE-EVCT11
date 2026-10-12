@@ -150,6 +150,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if old_entity_id:
             entity_registry.async_remove(old_entity_id)
 
+    # These report-backed sensors were removed because AlphaESS reports can
+    # lag well behind live charging. Clear their registry entries so upgrades
+    # do not leave permanently unavailable entities behind.
+    for unique_id in (
+        f"{system_serial}_today_report_energy",
+        f"{system_serial}_latest_charge_report",
+    ):
+        old_entity_id = entity_registry.async_get_entity_id(
+            Platform.SENSOR, DOMAIN, unique_id
+        )
+        if old_entity_id:
+            entity_registry.async_remove(old_entity_id)
+
     desired_title = f"AlphaESS Wallbox {system_serial}"
     if entry.title != desired_title:
         hass.config_entries.async_update_entry(entry, title=desired_title)
