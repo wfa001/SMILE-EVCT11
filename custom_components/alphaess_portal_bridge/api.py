@@ -105,6 +105,7 @@ class AlphaESSPortalApi:
         self._live_status_cache: dict[str, Any] | None = None
         self._live_status_cached_at = 0.0
         self._live_status_cached_serial: str | None = None
+        self._live_status_unavailable_serials: set[str] = set()
         self._charge_current_request_id = 0
         self._settings_written_callback: Callable[[], None] | None = None
         self._username = config[CONF_USERNAME]
@@ -182,14 +183,19 @@ class AlphaESSPortalApi:
         wallbox_status = self._find_wallbox_data(system, wallbox_serial)
         wallbox_status_source = "system"
 
-        if wallbox_serial:
+        if wallbox_serial and wallbox_serial not in self._live_status_unavailable_serials:
             try:
                 wallbox_status = await self.async_get_live_status(wallbox_serial)
                 wallbox_status_source = "real_status"
             except PortalConnectionError as err:
-                # 409 is returned by some portal states when live status is not
-                # available. Keep configuration/system data in that case.
-                if err.status != 409:
+                # G1T may not implement real-status at all; preserve system
+                # fallback for both initial and later full refreshes.
+                generation, _settings = self._settings_from_wallbox(
+                    self._find_wallbox_data(configuration, wallbox_serial)
+                )
+                if err.status == 404 and generation == "g1T":
+                    self._live_status_unavailable_serials.add(wallbox_serial)
+                elif err.status != 409:
                     raise
 
         latest_report: dict[str, Any] = {}

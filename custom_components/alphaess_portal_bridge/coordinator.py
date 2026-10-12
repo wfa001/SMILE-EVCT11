@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
@@ -51,15 +52,28 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._stopped = False
         self._live_refresh_cancel: Callable[[], None] | None = None
         self._live_refresh_errors = 0
+        self._live_status_supported: bool | None = None
+        self._live_last_duration_ms: int | None = None
+        self._full_last_duration_ms: int | None = None
+        self._live_success_count = 0
+        self._live_failure_count = 0
+        self._full_success_count = 0
+        self._full_failure_count = 0
+        self._live_last_http_status: int | None = None
         self._live_revision = 0
         self._latest_live_status: dict[str, Any] | None = None
         self.api.set_settings_written_callback(self._schedule_followup_refresh)
 
     def start_live_polling(self) -> None:
-        """Start a separate read-only five-second G2T update cycle."""
+        """Start a separate read-only five-second cycle for both generations."""
         if self._stopped or self._live_refresh_cancel is not None:
             return
-        if AlphaESSPortalApi.wallbox_generation(self.data) != "g2T":
+        if AlphaESSPortalApi.wallbox_generation(self.data) not in ("g1T", "g2T"):
+            return
+        if self._live_status_supported is False:
+            return
+        if (self.data or {}).get("wallbox_serial") in self.api._live_status_unavailable_serials:
+            self._live_status_supported = False
             return
         if not (self.data or {}).get("wallbox_serial"):
             return
@@ -82,11 +96,23 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._stopped:
             return
         delay = _G2T_LIVE_INTERVAL_SECONDS
+        started = time.monotonic()
         try:
             serial = (self.data or {}).get("wallbox_serial")
             if not serial:
                 return
             status = await self.api.async_get_live_status(serial)
+            # Some older G1T devices may expose no usable live endpoint.
+            # Avoid replacing coordinator data with empty/non-live payloads.
+            if not isinstance(status, dict) or not any(
+                key in status for key in ("status", "chargingStatus", "state", "power", "chargingPower", "currentPower", "realPower")
+            ):
+                self._live_status_supported = False
+                _LOGGER.warning("AlphaESS live-status payload unsupported; using regular refresh only")
+                return
+            self._live_status_supported = True
+            self._live_success_count += 1
+            self._live_last_http_status = None
             if not self._stopped:
                 self._latest_live_status = status
                 self._live_revision += 1
@@ -98,6 +124,17 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._live_refresh_errors = 0
                 self.async_update_listeners()
         except (AuthenticationError, PortalConnectionError) as err:
+            self._live_failure_count += 1
+            status_code = getattr(err, "status", None)
+            self._live_last_http_status = status_code if type(status_code) is int and 100 <= status_code <= 599 else None
+            # HTTP 404/409 on G1T commonly means this endpoint is unavailable.
+            # Do not hammer an unsupported API route every few seconds.
+            if AlphaESSPortalApi.wallbox_generation(self.data) == "g1T" and getattr(err, "status", None) in (404, 409):
+                self._live_status_supported = False
+                if getattr(err, "status", None) == 404:
+                    self.api._live_status_unavailable_serials.add(serial)
+                _LOGGER.warning("G1T fast live-status unavailable; using regular refresh only")
+                return
             self._live_refresh_errors += 1
             if isinstance(err, AuthenticationError) or getattr(err, "status", None) in (401, 403, 429):
                 delay = _G2T_LIVE_MAX_BACKOFF_SECONDS
@@ -111,7 +148,8 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 err.step, getattr(err, "status", "auth"), delay,
             )
         finally:
-            if not self._stopped:
+            self._live_last_duration_ms = min(round((time.monotonic() - started) * 1000), 600000)
+            if not self._stopped and self._live_status_supported is not False:
                 self._schedule_live_refresh(delay)
 
     def stop_live_polling(self) -> None:
@@ -150,6 +188,7 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         revision = self._live_revision
+        started = time.monotonic()
         try:
             refreshed = await self.api.async_get_wallbox_data()
             # A completed fast poll during the slower configuration fetch wins.
@@ -159,11 +198,15 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "wallbox_status": self._latest_live_status,
                     "wallbox_status_source": "real_status",
                 }
+            self._full_success_count += 1
             return refreshed
         except (AuthenticationError, PortalConnectionError) as err:
+            self._full_failure_count += 1
             _LOGGER.warning(
                 "AlphaESS wallbox refresh failed during %s with status %s",
                 err.step,
                 getattr(err, "status", "authorization"),
             )
             raise UpdateFailed(f"AlphaESS wallbox refresh failed during {err.step}") from err
+        finally:
+            self._full_last_duration_ms = min(round((time.monotonic() - started) * 1000), 600000)

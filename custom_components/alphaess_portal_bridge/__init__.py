@@ -92,9 +92,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if configured_interval not in UPDATE_INTERVAL_OPTIONS:
         generation = AlphaESSPortalApi.wallbox_generation(coordinator.data)
         configured_interval = (
-            DEFAULT_G2T_UPDATE_INTERVAL_SECONDS
-            if generation == "g2T"
-            else DEFAULT_UPDATE_INTERVAL_SECONDS
+            DEFAULT_UPDATE_INTERVAL_SECONDS
         )
         coordinator.update_interval = timedelta(seconds=configured_interval)
 

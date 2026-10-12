@@ -122,8 +122,6 @@ def _default_update_interval(hass: Any, entry: config_entries.ConfigEntry) -> in
     generation = AlphaESSPortalApi.wallbox_generation(
         getattr(coordinator, "data", None)
     )
-    if generation == "g2T":
-        return DEFAULT_G2T_UPDATE_INTERVAL_SECONDS
     return DEFAULT_UPDATE_INTERVAL_SECONDS
 
 
