@@ -5,6 +5,7 @@ Run: python -m unittest discover -s tests
 import ast
 import asyncio
 import json
+import re
 from types import SimpleNamespace
 from pathlib import Path
 import unittest
@@ -24,7 +25,7 @@ def load_helpers():
             if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names)
             or (isinstance(node, ast.Assign) and any(
                 isinstance(target, ast.Name) and target.id in {
-                    "_WALLBOX_FIELDS", "_COMMON_SETTINGS", "_G2T_SETTINGS",
+                    "_WALLBOX_FIELDS", "_COMMON_SETTINGS", "_G1T_SCHEDULE_FIELDS", "_G2T_SETTINGS",
                     "_LIVE_FIELDS", "_REPORT_FIELDS"
                 } for target in node.targets
             ))
@@ -39,7 +40,25 @@ def load_helpers():
                     return profile, wallbox[profile]
             return None, None
 
-    namespace = {"Any": Any, "HomeAssistant": object, "ConfigEntry": object, "AlphaESSPortalApi": FakePortal, "DOMAIN": "alphaess_portal_bridge"}
+    schedule_source = source.with_name("schedule.py")
+    schedule_ast = ast.parse(schedule_source.read_text(encoding="utf-8"))
+    schedule_subset = ast.Module(
+        body=[
+            node for node in schedule_ast.body
+            if isinstance(node, (ast.FunctionDef, ast.Assign))
+        ],
+        type_ignores=[],
+    )
+    schedule_ns = {"re": re, "Any": Any}
+    exec(compile(ast.fix_missing_locations(schedule_subset), str(schedule_source), "exec"), schedule_ns)
+    namespace = {
+        "Any": Any,
+        "HomeAssistant": object,
+        "ConfigEntry": object,
+        "AlphaESSPortalApi": FakePortal,
+        "DOMAIN": "alphaess_portal_bridge",
+        "g1t_schedule_schema_matches": schedule_ns["g1t_schedule_schema_matches"],
+    }
     exec(compile(ast.fix_missing_locations(subset), str(source), "exec"), namespace)
     return namespace
 
