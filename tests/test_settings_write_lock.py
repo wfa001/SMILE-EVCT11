@@ -18,6 +18,13 @@ import typing
 import unittest
 
 
+SCHEDULE_FILE = (
+    Path(__file__).resolve().parents[1]
+    / "custom_components"
+    / "alphaess_portal_bridge"
+    / "schedule.py"
+)
+
 API_FILE = (
     Path(__file__).resolve().parents[1]
     / "custom_components"
@@ -68,7 +75,22 @@ def load_production_methods():
     module = ast.fix_missing_locations(
         ast.Module(body=[decorator, extracted_class], type_ignores=[])
     )
+    schedule_module = ast.parse(SCHEDULE_FILE.read_text(encoding="utf-8"))
+    schedule_namespace = {"re": re, "Any": typing.Any}
+    schedule_subset = ast.Module(
+        body=[
+            node for node in schedule_module.body
+            if isinstance(node, (ast.FunctionDef, ast.Assign))
+        ],
+        type_ignores=[],
+    )
+    exec(
+        compile(ast.fix_missing_locations(schedule_subset), str(SCHEDULE_FILE), "exec"),
+        schedule_namespace,
+    )
+
     namespace = {
+        "schedule_supported": schedule_namespace["schedule_supported"],
         "wraps": functools.wraps,
         "copy": copy,
         "re": re,
