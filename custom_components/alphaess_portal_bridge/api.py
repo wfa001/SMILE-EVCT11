@@ -25,6 +25,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
+from .schedule import schedule_supported
+
 from .const import (
     API_URL,
     CONF_PASSWORD,
@@ -373,8 +375,11 @@ class AlphaESSPortalApi:
             settings["chargeCurrent"] = charge_current
 
         if charge_strategy is not None:
-            if generation != "g2T" or charge_strategy not in {0, 1, 2}:
-                raise ValueError("Nicht unterstützte Ladeeinstellung")
+            if charge_strategy not in {0, 1, 2} or not schedule_supported(generation, settings):
+                raise ValueError(
+                    "Zeitsteuerung für diese Wallbox nicht verfügbar: "
+                    "Portal-Datenstruktur nicht bestätigt"
+                )
             if charge_strategy == 1 and settings.get("smartMode") is True:
                 raise ValueError(
                     "Smart Mode vor Wechsel auf Zeitgesteuertes Aufladen deaktivieren"
@@ -444,7 +449,7 @@ class AlphaESSPortalApi:
         charge_mode: int | None = None,
         charge_current: int | None = None,
     ) -> None:
-        """Update one of the three G2T time periods."""
+        """Update a period only when the portal already exposes its known schema."""
         if index not in {0, 1, 2}:
             raise ValueError("Ungültiger Zeitrahmen: erlaubt sind Zeitrahmen 1 bis 3")
         configuration = await self._async_get(
@@ -453,8 +458,11 @@ class AlphaESSPortalApi:
         payload = copy.deepcopy(configuration)
         wallbox = self._find_wallbox_data(payload, self._wallbox_serial)
         generation, settings = self._settings_from_wallbox(wallbox)
-        if generation != "g2T" or settings is None:
-            raise ValueError("Zeitrahmen sind nur bei G2T-Wallboxen verfügbar")
+        if settings is None or not schedule_supported(generation, settings):
+            raise ValueError(
+                "Zeitfenster nicht verfügbar: G1T-Portal-Schema unbestätigt "
+                "oder kein unterstütztes Zeitfensterprofil"
+            )
         periods = settings.get("timePeriods")
         if not isinstance(periods, list) or len(periods) < 3 or not isinstance(periods[index], dict):
             raise PortalConnectionError(step="time period settings")
