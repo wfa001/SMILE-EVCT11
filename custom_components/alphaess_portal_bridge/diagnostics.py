@@ -92,6 +92,13 @@ async def async_get_config_entry_diagnostics(
             "live_consecutive_errors": min(coordinator._live_refresh_errors, 100000),
             "data_available": bool(data),
             "last_update_success": bool(coordinator.last_update_success),
+            "live_success_count": min(coordinator._live_success_count, 1000000),
+            "live_failure_count": min(coordinator._live_failure_count, 1000000),
+            "full_success_count": min(coordinator._full_success_count, 1000000),
+            "full_failure_count": min(coordinator._full_failure_count, 1000000),
+            "live_last_cycle_duration_ms": coordinator._live_last_duration_ms,
+            "full_last_cycle_duration_ms": coordinator._full_last_duration_ms,
+            "live_last_http_status": coordinator._live_last_http_status,
         },
         "wallbox_schema": {
             "fields": _present_fields(wallbox, _WALLBOX_FIELDS),
