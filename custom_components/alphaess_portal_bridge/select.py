@@ -86,7 +86,7 @@ class AlphaESSWallboxModeSelect(AlphaESSWallboxEntity, SelectEntity):
 
 
 class AlphaESSWallboxStrategySelect(AlphaESSWallboxEntity, SelectEntity):
-    """G2T charging strategy: manual, schedule or plug-and-play."""
+    """Strategy of G2T or a schema-confirmed G1T wallbox."""
 
     _attr_name = "Ladeeinstellung"
     _attr_options = list(STRATEGIES)
@@ -97,7 +97,15 @@ class AlphaESSWallboxStrategySelect(AlphaESSWallboxEntity, SelectEntity):
 
     @property
     def available(self) -> bool:
-        return super().available and self.settings_generation == "g2T"
+        generation, settings = settings_object(self.coordinator)
+        return (
+            super().available
+            and (
+                generation == "g2T"
+                or (generation == "g1T" and type(settings.get("chargeStrategy")) is int
+                    and settings["chargeStrategy"] in {0, 1, 2})
+            )
+        )
 
     @property
     def current_option(self) -> str | None:
@@ -168,7 +176,7 @@ class AlphaESSWallboxPhaseSelect(AlphaESSWallboxEntity, SelectEntity):
 
 
 class AlphaESSTimePeriodModeSelect(AlphaESSWallboxEntity, SelectEntity):
-    """Charge mode for one G2T schedule period."""
+    """Charge mode for G2T or a schema-confirmed G1T period."""
 
     _attr_options = list(G2_MODES)
     _attr_entity_category = EntityCategory.CONFIG
@@ -191,7 +199,13 @@ class AlphaESSTimePeriodModeSelect(AlphaESSWallboxEntity, SelectEntity):
 
     @property
     def available(self) -> bool:
-        return super().available and self.settings_generation == "g2T" and bool(time_period(self.coordinator, self._index))
+        period = time_period(self.coordinator, self._index)
+        return (
+            super().available
+            and self.settings_generation in {"g1T", "g2T"}
+            and bool(period)
+            and (self.settings_generation == "g2T" or "chargeMode" in period)
+        )
 
     @property
     def current_option(self) -> str | None:
