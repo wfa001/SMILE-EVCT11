@@ -17,7 +17,6 @@ from .const import CONF_SYSTEM_SERIAL, DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
 
 G1_MODES = {
-    "ECO-Ladung": 0,
     "Langsamladung": 1,
     "Schonladung / Standardleistung": 2,
     "Schnellladung": 3,
@@ -65,22 +64,30 @@ def settings_object(coordinator: AlphaESSWallboxCoordinator) -> tuple[str | None
 
 def time_period(coordinator: AlphaESSWallboxCoordinator, index: int) -> dict[str, Any]:
     generation, settings = settings_object(coordinator)
-    if generation != "g2T":
+    if generation not in {"g1T", "g2T"}:
         return {}
     periods = settings.get("timePeriods")
     if not isinstance(periods, list) or index < 0 or index >= len(periods):
         return {}
     period = periods[index]
-    return period if isinstance(period, dict) else {}
+    if not isinstance(period, dict):
+        return {}
+    # G1T is experimental: expose a period only if the exact G2T-style
+    # timing fields are already present. Never manufacture unknown fields.
+    if generation == "g1T" and not all(
+        isinstance(period.get(key), str) for key in ("startTime", "endTime")
+    ):
+        return {}
+    return period
 
 def scheduled_charging_selected(coordinator: AlphaESSWallboxCoordinator) -> bool:
-    """Whether G2T reports the scheduled charging strategy as selected.
+    """Whether either generation explicitly reports schedule strategy 1.
 
-    This is the *portal configuration*, not proof that the wallbox has applied
-    a schedule at the hardware level.
+    Missing G1T chargeStrategy is *unknown*, never inferred from UI similarity.
+    This only reports portal configuration, not physical timer execution.
     """
     generation, settings = settings_object(coordinator)
-    return generation == "g2T" and settings.get("chargeStrategy") == 1
+    return generation in {"g1T", "g2T"} and settings.get("chargeStrategy") == 1
 
 
 def time_period_selected(coordinator: AlphaESSWallboxCoordinator, index: int) -> bool:
@@ -98,10 +105,12 @@ def time_period_selected(coordinator: AlphaESSWallboxCoordinator, index: int) ->
 def time_period_status(coordinator: AlphaESSWallboxCoordinator, index: int) -> str:
     """Describe stored schedule activation without claiming physical execution."""
     generation, settings = settings_object(coordinator)
-    if generation != "g2T":
+    if generation not in {"g1T", "g2T"}:
         return "Nicht verfügbar"
 
     period = time_period(coordinator, index)
+    if not period:
+        return "Nicht verfügbar"
     enabled = period.get("isEnable")
     if not isinstance(enabled, bool):
         return "Unbekannt (Aktivierungsstatus fehlt)"
@@ -110,6 +119,8 @@ def time_period_status(coordinator: AlphaESSWallboxCoordinator, index: int) -> s
         return "Deaktiviert (Zeiten bleiben gespeichert)"
 
     strategy = settings.get("chargeStrategy")
+    if generation == "g1T" and strategy not in {0, 1, 2}:
+        return "G1T: Zeitfenster vorhanden, Aktivierungsstrategie unbekannt"
     if strategy == 1:
         return "Im Zeitplan aktiviert (laut Portal)"
     if strategy in {0, 2}:
