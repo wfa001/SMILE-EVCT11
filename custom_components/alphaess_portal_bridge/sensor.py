@@ -48,8 +48,8 @@ async def async_setup_entry(
             AlphaESSWallboxPowerSensor(coordinator, entry),
             AlphaESSYesNoSensor(coordinator, entry, "Fahrzeug angeschlossen", "vehicle_connected"),
             AlphaESSYesNoSensor(coordinator, entry, "Ladestecker verriegelt", "gun_locked"),
-            AlphaESSWallboxEnergySensor(coordinator, entry, "In dieser Sitzung geladen", "chargingAmount", "today_energy"),
-            AlphaESSWallboxEnergySensor(coordinator, entry, "Letzter Ladeabschnitt", "lastChargingAmount", "last_energy"),
+            AlphaESSWallboxEnergySensor(coordinator, entry, "Heute geladen", "chargingAmount", "today_energy"),
+            AlphaESSWallboxEnergySensor(coordinator, entry, "Aktueller / letzter Ladeabschnitt", "lastChargingAmount", "last_energy"),
             AlphaESSTodayChargeReportSensor(coordinator, entry),
             AlphaESSWallboxModeSensor(coordinator, entry),
             AlphaESSLatestChargeReportSensor(coordinator, entry),
@@ -177,6 +177,10 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         super().__init__(coordinator, entry, unique_key)
         self._attr_name = name
         self._key = key
+        # The daily counter resets at midnight. Do not coerce missing
+        # portal readings to zero: unknown is the truthful missing state.
+        if key == "chargingAmount":
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
 
     @property
     def native_value(self) -> float | None:
@@ -191,17 +195,17 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, str]:
         if self._key == "chargingAmount":
             return {
-                "Quelle": "G2T real-status: chargingAmount",
+                "Quelle": "Portal real-status: chargingAmount",
                 "Hinweis": (
-                    "AlphaESS bezeichnet diesen Wert in der App als 'In dieser Sitzung geladen'. "
-                    "Im Live-Test blieb er nach erneutem Anstecken erhalten."
+                    "Summiert die Ladeenergie des heutigen Kalendertags. "
+                    "Bei fehlenden Portalwerten um Mitternacht wird kein Nullwert erfunden."
                 ),
             }
         return {
-            "Quelle": "G2T real-status: lastChargingAmount",
+            "Quelle": "Portal real-status: lastChargingAmount",
             "Hinweis": (
-                "Im Live-Test entsprach der Wert der Energie des zuletzt abgeschlossenen "
-                "Ladeabschnitts und war zeitweise nicht vorhanden."
+                "Energie des laufenden oder zuletzt abgeschlossenen Ladeabschnitts. "
+                "Bei einer neuen Ladung beginnt der Wert erneut und kann zeitweise fehlen."
             ),
         }
 
