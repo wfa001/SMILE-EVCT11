@@ -30,7 +30,7 @@ def load_helpers():
                     return profile, wallbox[profile]
             return None, None
 
-    namespace = {"Any": Any, "AlphaESSPortalApi": FakePortal, "DOMAIN": "alphaess_portal_bridge"}
+    namespace = {"Any": Any, "HomeAssistant": object, "ConfigEntry": object, "AlphaESSPortalApi": FakePortal, "DOMAIN": "alphaess_portal_bridge"}
     exec(compile(ast.fix_missing_locations(subset), str(source), "exec"), namespace)
     return namespace
 
