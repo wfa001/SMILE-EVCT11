@@ -177,6 +177,40 @@ class TesterFeedbackScheduleTests(unittest.TestCase):
         self.assertIn("Soll-Ladestrom", attrs["Hinweis"])
         self.assertIn("Live-Leistung", attrs["Hinweis"])
 
+    def test_g1t_matching_portal_schedule_is_exposed(self):
+        co = make_coordinator(strategy=1, enabled=True, generation="g1T")
+        settings = co.data["configuration"]["evCharger"][0]["g1T"]
+        for period in settings["timePeriods"]:
+            period["chargeMode"] = 2
+            period["chargeCurrent"] = 12
+        self.assertTrue(NS["schedule_supported"]("g1T", settings))
+        self.assertEqual(NS["time_period"](co, 0)["startTime"], "08:00")
+        self.assertTrue(NS["scheduled_charging_selected"](co))
+        self.assertTrue(NS["time_period_selected"](co, 0))
+        self.assertIn("Im Zeitplan aktiviert", NS["time_period_status"](co, 0))
+
+    def test_g1t_incomplete_schedule_remains_unavailable(self):
+        co = make_coordinator(strategy=1, enabled=True, generation="g1T")
+        settings = co.data["configuration"]["evCharger"][0]["g1T"]
+        for period in settings["timePeriods"]:
+            period["chargeMode"] = 2
+            period["chargeCurrent"] = 12
+        del settings["timePeriods"][1]["chargeCurrent"]
+        self.assertFalse(NS["schedule_supported"]("g1T", settings))
+        self.assertEqual(NS["time_period"](co, 0), {})
+        self.assertFalse(NS["scheduled_charging_selected"](co))
+        self.assertEqual(NS["time_period_status"](co, 0), "Nicht verfügbar")
+
+    def test_g1t_global_eco_mode_not_assumed_for_periods(self):
+        co = make_coordinator(generation="g1T")
+        settings = co.data["configuration"]["evCharger"][0]["g1T"]
+        for period in settings["timePeriods"]:
+            period["chargeMode"] = 2
+            period["chargeCurrent"] = 12
+        self.assertTrue(NS["schedule_supported"]("g1T", settings))
+        settings["timePeriods"][0]["chargeMode"] = 0
+        self.assertFalse(NS["schedule_supported"]("g1T", settings))
+
 
 if __name__ == "__main__":
     unittest.main()
