@@ -79,10 +79,27 @@ class PrivacyTests(unittest.TestCase):
         }
         result = f(raw)
         self.assertEqual(result["count"], 1)
+        self.assertEqual(result["periods"][0]["fields"], ["startTime", "endTime", "chargeMode"])
+        self.assertTrue(result["periods"][0]["timing_fields_are_strings"])
         self.assertEqual(result["fields"], ["chargeMode", "endTime", "startTime"])
         self.assertNotIn("08:07", str(result))
         self.assertNotIn("TOP-SECRET", str(result))
         self.assertNotIn("ALP123456789", str(result))
+
+    def test_individual_g1t_periods_do_not_mask_missing_fields(self):
+        f = self.functions["_period_schema"]
+        result = f({"timePeriods": [
+            {"startTime": "08:07", "endTime": "09:23", "isEnable": True},
+            {"startTime": "10:01", "isEnable": True},
+            {"startTime": 123, "endTime": "12:59"},
+        ]})
+        self.assertEqual(result["count"], 3)
+        self.assertEqual(len(result["periods"]), 3)
+        self.assertTrue(result["periods"][0]["timing_fields_are_strings"])
+        self.assertFalse(result["periods"][1]["timing_fields_are_strings"])
+        self.assertFalse(result["periods"][2]["timing_fields_are_strings"])
+        self.assertNotIn("08:07", json.dumps(result))
+        self.assertNotIn("10:01", json.dumps(result))
 
     def test_complete_diagnostics_never_exposes_private_values(self):
         secret = "PRIVATE-VERY-SENSITIVE-TOKEN"
