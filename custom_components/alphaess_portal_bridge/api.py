@@ -25,6 +25,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
+from .schedule import schedule_supported
+
 from .const import (
     API_URL,
     CONF_PASSWORD,
@@ -385,10 +387,7 @@ class AlphaESSPortalApi:
         if charge_strategy is not None:
             if generation not in {"g1T", "g2T"} or charge_strategy not in {0, 1, 2}:
                 raise ValueError("Nicht unterstützte Ladeeinstellung")
-            if generation == "g1T" and (
-                type(settings.get("chargeStrategy")) is not int
-                or settings["chargeStrategy"] not in {0, 1, 2}
-            ):
+            if generation == "g1T" and not schedule_supported(generation, settings):
                 raise ValueError("G1T Ladeeinstellung ist im Portal nicht bestätigt")
             if charge_strategy == 1 and settings.get("smartMode") is True:
                 raise ValueError(
@@ -479,6 +478,8 @@ class AlphaESSPortalApi:
         ):
             raise PortalConnectionError(step="time period settings")
         period = periods[index]
+        if generation == "g1T" and not schedule_supported(generation, settings):
+            raise ValueError("G1T Zeitrahmen: Portal-Datenstruktur nicht vollständig bestätigt")
         if generation == "g1T":
             # UI similarity does not prove that the G1T accepts G2T PATCH
             # fields. Restrict test writes to fields already returned by the

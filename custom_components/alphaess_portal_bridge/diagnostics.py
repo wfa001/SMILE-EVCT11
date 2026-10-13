@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .api import AlphaESSPortalApi
+from .schedule import g1t_schedule_schema_matches
 from .const import DOMAIN
 
 # Exact known schema fields only. Unknown fields are never exported.
@@ -126,6 +127,9 @@ async def async_get_config_entry_diagnostics(
             ),
             "automatic_cable_lock": _bool_capability(settings, "isSupportGunLineSelfLock"),
             "time_periods": _period_schema(settings),
+            "g1t_schedule_schema_matches": (
+                g1t_schedule_schema_matches(settings) if generation == "g1T" else None
+            ),
         },
         "live_data": {
             "source": "real_status" if data.get("wallbox_status_source") == "real_status" else "system_or_unknown",

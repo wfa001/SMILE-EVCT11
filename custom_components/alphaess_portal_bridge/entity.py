@@ -14,6 +14,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_SYSTEM_SERIAL, DOMAIN
+from .schedule import schedule_supported
 from .coordinator import AlphaESSWallboxCoordinator
 
 G1_MODES = {
@@ -64,7 +65,7 @@ def settings_object(coordinator: AlphaESSWallboxCoordinator) -> tuple[str | None
 
 def time_period(coordinator: AlphaESSWallboxCoordinator, index: int) -> dict[str, Any]:
     generation, settings = settings_object(coordinator)
-    if generation not in {"g1T", "g2T"}:
+    if not schedule_supported(generation, settings):
         return {}
     periods = settings.get("timePeriods")
     if not isinstance(periods, list) or index < 0 or index >= len(periods):
@@ -87,7 +88,7 @@ def scheduled_charging_selected(coordinator: AlphaESSWallboxCoordinator) -> bool
     This only reports portal configuration, not physical timer execution.
     """
     generation, settings = settings_object(coordinator)
-    return generation in {"g1T", "g2T"} and settings.get("chargeStrategy") == 1
+    return schedule_supported(generation, settings) and settings.get("chargeStrategy") == 1
 
 
 def time_period_selected(coordinator: AlphaESSWallboxCoordinator, index: int) -> bool:

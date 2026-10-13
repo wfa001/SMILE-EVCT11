@@ -3,6 +3,7 @@ import ast
 import asyncio
 import copy
 import re
+import runpy
 from pathlib import Path
 import unittest
 from typing import Any
@@ -14,7 +15,8 @@ def load_helpers():
     module = ast.parse(path.read_text(encoding="utf-8"))
     selected = {"wallbox_object", "settings_object", "time_period", "scheduled_charging_selected", "time_period_selected"}
     nodes = [node for node in module.body if isinstance(node, ast.FunctionDef) and node.name in selected]
-    namespace = {"Any": Any, "AlphaESSWallboxCoordinator": object}
+    guard = runpy.run_path(str(path.parent / "schedule.py"))
+    namespace = {"Any": Any, "AlphaESSWallboxCoordinator": object, **guard}
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), str(path), "exec"), namespace)
     return namespace
 
@@ -32,7 +34,9 @@ class G1TScheduleSchemaTests(unittest.TestCase):
 
     def test_valid_existing_period_exposed(self):
         item = self.coordinator({"chargeStrategy": 1, "timePeriods": [
-            {"startTime": "08:07", "endTime": "09:23", "isEnable": True}
+            {"startTime": "08:07", "endTime": "09:23", "isEnable": True, "chargeMode": 1, "chargeCurrent": 6},
+            {"startTime": "10:00", "endTime": "11:00", "isEnable": False, "chargeMode": 2, "chargeCurrent": 8},
+            {"startTime": "12:00", "endTime": "13:00", "isEnable": False, "chargeMode": 4, "chargeCurrent": 16},
         ]})
         self.assertEqual(self.helpers["time_period"](item, 0)["startTime"], "08:07")
         self.assertTrue(self.helpers["time_period_selected"](item, 0))
@@ -58,7 +62,8 @@ def load_api_writer():
     api_class = next(node for node in module.body if isinstance(node, ast.ClassDef) and node.name == "AlphaESSPortalApi")
     method = next(node for node in api_class.body if isinstance(node, ast.AsyncFunctionDef) and node.name == "async_update_time_period")
     method.decorator_list = []  # Test method's real body without HA locking machinery.
-    namespace = {"copy": copy, "re": re, "PortalConnectionError": RuntimeError}
+    guard = runpy.run_path(str(path.parent / "schedule.py"))
+    namespace = {"copy": copy, "re": re, "PortalConnectionError": RuntimeError, **guard}
     exec(compile(ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[])), str(path), "exec"), namespace)
     return namespace["async_update_time_period"]
 
@@ -68,10 +73,11 @@ class ScheduleWriterTests(unittest.TestCase):
         self.writer = load_api_writer()
         self.patches = []
         self.configuration = {"wallbox": {"g1T": {
+            "chargeStrategy": 1,
             "timePeriods": [
-                {"startTime": "08:00", "endTime": "09:00", "isEnable": False},
-                {"startTime": "10:00", "endTime": "11:00"},
-                {"startTime": "12:00", "endTime": "13:00"},
+                {"startTime": "08:00", "endTime": "09:00", "isEnable": False, "chargeMode": 1, "chargeCurrent": 6},
+                {"startTime": "10:00", "endTime": "11:00", "isEnable": False, "chargeMode": 2, "chargeCurrent": 8},
+                {"startTime": "12:00", "endTime": "13:00", "isEnable": False, "chargeMode": 4, "chargeCurrent": 16},
             ]
         }}}
         self.api = SimpleNamespace(
@@ -101,6 +107,7 @@ class ScheduleWriterTests(unittest.TestCase):
         self.assertTrue(self.patches[0][0][1]["wallbox"]["g1T"]["timePeriods"][0]["isEnable"])
 
     def test_missing_field_rejects_write_without_patch(self):
+        del self.configuration["wallbox"]["g1T"]["timePeriods"][1]["isEnable"]
         with self.assertRaises(ValueError):
             asyncio.run(self.writer(self.api, 1, enabled=True))
         self.assertEqual(self.patches, [])
@@ -109,6 +116,18 @@ class ScheduleWriterTests(unittest.TestCase):
         del self.configuration["wallbox"]["g1T"]["timePeriods"][0]["endTime"]
         with self.assertRaises(ValueError):
             asyncio.run(self.writer(self.api, 0, start_time="08:07"))
+        self.assertEqual(self.patches, [])
+
+    def test_invalid_mode_elsewhere_blocks_all_writes(self):
+        self.configuration["wallbox"]["g1T"]["timePeriods"][2]["chargeMode"] = 0
+        with self.assertRaises(ValueError):
+            asyncio.run(self.writer(self.api, 0, enabled=True))
+        self.assertEqual(self.patches, [])
+
+    def test_incomplete_strategy_blocks_all_writes(self):
+        del self.configuration["wallbox"]["g1T"]["chargeStrategy"]
+        with self.assertRaises(ValueError):
+            asyncio.run(self.writer(self.api, 0, enabled=True))
         self.assertEqual(self.patches, [])
 
     def test_nonexistent_period_rejects_write(self):

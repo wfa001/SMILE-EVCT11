@@ -14,6 +14,7 @@ import copy
 import functools
 from pathlib import Path
 import re
+import runpy
 import typing
 import unittest
 
@@ -74,6 +75,7 @@ def load_production_methods():
         "re": re,
         "Any": typing.Any,
         "PortalConnectionError": PortalConnectionError,
+        **runpy.run_path(str(API_FILE.parent / "schedule.py")),
     }
     exec(compile(module, str(API_FILE), "exec"), namespace)
     cls = namespace["ExtractedPortalMethods"]

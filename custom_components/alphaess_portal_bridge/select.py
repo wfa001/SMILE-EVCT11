@@ -17,6 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .api import AuthenticationError, PortalConnectionError
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
+from .schedule import schedule_supported
 from .entity import (
     G1_MODES,
     G2_MODES,
@@ -64,7 +65,7 @@ class AlphaESSWallboxModeSelect(AlphaESSWallboxEntity, SelectEntity):
         generation, settings = settings_object(self.coordinator)
         # The portal hides the global Lademodus while G2T is controlled by
         # time periods.  Mirror that behavior instead of showing "unknown".
-        return super().available and not (generation == "g2T" and settings.get("chargeStrategy") == 1)
+        return super().available and not (schedule_supported(generation, settings) and settings.get("chargeStrategy") == 1)
 
     @property
     def current_option(self) -> str | None:
@@ -101,9 +102,7 @@ class AlphaESSWallboxStrategySelect(AlphaESSWallboxEntity, SelectEntity):
         return (
             super().available
             and (
-                generation == "g2T"
-                or (generation == "g1T" and type(settings.get("chargeStrategy")) is int
-                    and settings["chargeStrategy"] in {0, 1, 2})
+                schedule_supported(generation, settings)
             )
         )
 
@@ -202,7 +201,7 @@ class AlphaESSTimePeriodModeSelect(AlphaESSWallboxEntity, SelectEntity):
         period = time_period(self.coordinator, self._index)
         return (
             super().available
-            and self.settings_generation in {"g1T", "g2T"}
+            and schedule_supported(self.settings_generation, self.settings)
             and bool(period)
             and (self.settings_generation == "g2T" or "chargeMode" in period)
         )
