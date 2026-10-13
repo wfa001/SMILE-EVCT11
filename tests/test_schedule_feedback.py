@@ -14,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 import unittest
+import runpy
 
 
 COMPONENT = Path(__file__).resolve().parents[1] / "custom_components" / "alphaess_portal_bridge"
@@ -35,7 +36,8 @@ def extract_helpers():
     ]
     assert {f.name for f in functions} == wanted
     module = ast.fix_missing_locations(ast.Module(body=functions, type_ignores=[]))
-    namespace = {"Any": Any, "AlphaESSWallboxCoordinator": object}
+    guard = runpy.run_path(str(COMPONENT / "schedule.py"))
+    namespace = {"Any": Any, "AlphaESSWallboxCoordinator": object, **guard}
     exec(compile(module, str(COMPONENT / "entity.py"), "exec"), namespace)
     return namespace
 
@@ -57,9 +59,9 @@ def make_coordinator(strategy=1, enabled=True, generation="g2T"):
         "chargeStrategy": strategy,
         "chargeCurrent": 10,
         "timePeriods": [
-            {"isEnable": enabled, "startTime": "08:00", "endTime": "17:00"},
-            {"isEnable": False, "startTime": "17:00", "endTime": "21:00"},
-            {"isEnable": True, "startTime": "00:15", "endTime": "04:45"},
+            {"isEnable": enabled, "startTime": "08:00", "endTime": "17:00", "chargeMode": 1, "chargeCurrent": 6},
+            {"isEnable": False, "startTime": "17:00", "endTime": "21:00", "chargeMode": 2, "chargeCurrent": 8},
+            {"isEnable": True, "startTime": "00:15", "endTime": "04:45", "chargeMode": 4, "chargeCurrent": 16},
         ],
     }
     data = {
