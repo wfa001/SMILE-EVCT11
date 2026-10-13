@@ -175,7 +175,7 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         super().__init__(coordinator, entry, unique_key)
         self._attr_name = name
         self._key = key
-        # Daily counter is a total that resets at midnight.
+        # Observations suggest a daily total with a midnight reset; confirm on hardware.
         if key == "chargingAmount":
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
 
