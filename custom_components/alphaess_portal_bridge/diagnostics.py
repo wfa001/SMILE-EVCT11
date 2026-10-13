@@ -19,8 +19,9 @@ _WALLBOX_FIELDS = (
     "softwareVersion", "hardwareVersion", "startUpPower",
 )
 _COMMON_SETTINGS = ("chargeMode", "chargeCurrent")
+_SCHEDULE_SETTINGS = ("chargeStrategy", "timePeriods")
 _G2T_SETTINGS = (
-    "chargeStrategy", "obcPhase", "smartMode", "timePeriods",
+    "obcPhase", "smartMode",
     "isSupportGunLineSelfLock", "gunLineSelfLockEnable",
 )
 _LIVE_FIELDS = (
@@ -103,7 +104,7 @@ async def async_get_config_entry_diagnostics(
         "wallbox_schema": {
             "fields": _present_fields(wallbox, _WALLBOX_FIELDS),
             "settings_fields": _present_fields(
-                settings, _COMMON_SETTINGS + (_G2T_SETTINGS if generation == "g2T" else ())
+                settings, _COMMON_SETTINGS + _SCHEDULE_SETTINGS + (_G2T_SETTINGS if generation == "g2T" else ())
             ),
             "automatic_cable_lock": _bool_capability(settings, "isSupportGunLineSelfLock"),
             "time_periods": _period_schema(settings),
