@@ -112,7 +112,7 @@ class ScheduleWriterTests(unittest.TestCase):
         self.assertEqual(self.patches, [])
 
     def test_nonexistent_period_rejects_write(self):
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(ValueError):
             asyncio.run(self.writer(self.api, 3, enabled=True))
         self.assertEqual(self.patches, [])
 
