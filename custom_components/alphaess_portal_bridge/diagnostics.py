@@ -19,8 +19,9 @@ _WALLBOX_FIELDS = (
     "softwareVersion", "hardwareVersion", "startUpPower",
 )
 _COMMON_SETTINGS = ("chargeMode", "chargeCurrent")
+_SCHEDULE_SETTINGS = ("chargeStrategy", "timePeriods")
 _G2T_SETTINGS = (
-    "chargeStrategy", "obcPhase", "smartMode", "timePeriods",
+    "obcPhase", "smartMode",
     "isSupportGunLineSelfLock", "gunLineSelfLockEnable",
 )
 _LIVE_FIELDS = (
@@ -60,6 +61,24 @@ def _period_schema(settings: Any) -> dict[str, Any]:
             for field in ("startTime", "endTime", "chargeMode", "chargeCurrent", "isEnable")
             if field in period
         }),
+        # Keep each window separate: a union alone can hide missing fields
+        # in one particular G1T period. Never export actual times or values.
+        "periods": [
+            {
+                "fields": [
+                    key for key in ("startTime", "endTime", "chargeMode", "chargeCurrent", "isEnable")
+                    if key in period
+                ],
+                "timing_fields_are_strings": (
+                    isinstance(period.get("startTime"), str)
+                    and isinstance(period.get("endTime"), str)
+                ),
+            } if isinstance(period, dict) else {
+                "fields": [],
+                "timing_fields_are_strings": False,
+            }
+            for period in periods[:3]
+        ],
     }
 
 
@@ -103,7 +122,7 @@ async def async_get_config_entry_diagnostics(
         "wallbox_schema": {
             "fields": _present_fields(wallbox, _WALLBOX_FIELDS),
             "settings_fields": _present_fields(
-                settings, _COMMON_SETTINGS + (_G2T_SETTINGS if generation == "g2T" else ())
+                settings, _COMMON_SETTINGS + _SCHEDULE_SETTINGS + (_G2T_SETTINGS if generation == "g2T" else ())
             ),
             "automatic_cable_lock": _bool_capability(settings, "isSupportGunLineSelfLock"),
             "time_periods": _period_schema(settings),

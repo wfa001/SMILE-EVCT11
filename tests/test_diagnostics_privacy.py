@@ -24,7 +24,7 @@ def load_helpers():
             if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names)
             or (isinstance(node, ast.Assign) and any(
                 isinstance(target, ast.Name) and target.id in {
-                    "_WALLBOX_FIELDS", "_COMMON_SETTINGS", "_G2T_SETTINGS",
+                    "_WALLBOX_FIELDS", "_COMMON_SETTINGS", "_SCHEDULE_SETTINGS", "_G2T_SETTINGS",
                     "_LIVE_FIELDS", "_REPORT_FIELDS"
                 } for target in node.targets
             ))
@@ -79,10 +79,27 @@ class PrivacyTests(unittest.TestCase):
         }
         result = f(raw)
         self.assertEqual(result["count"], 1)
+        self.assertEqual(result["periods"][0]["fields"], ["startTime", "endTime", "chargeMode"])
+        self.assertTrue(result["periods"][0]["timing_fields_are_strings"])
         self.assertEqual(result["fields"], ["chargeMode", "endTime", "startTime"])
         self.assertNotIn("08:07", str(result))
         self.assertNotIn("TOP-SECRET", str(result))
         self.assertNotIn("ALP123456789", str(result))
+
+    def test_individual_g1t_periods_do_not_mask_missing_fields(self):
+        f = self.functions["_period_schema"]
+        result = f({"timePeriods": [
+            {"startTime": "08:07", "endTime": "09:23", "isEnable": True},
+            {"startTime": "10:01", "isEnable": True},
+            {"startTime": 123, "endTime": "12:59"},
+        ]})
+        self.assertEqual(result["count"], 3)
+        self.assertEqual(len(result["periods"]), 3)
+        self.assertTrue(result["periods"][0]["timing_fields_are_strings"])
+        self.assertFalse(result["periods"][1]["timing_fields_are_strings"])
+        self.assertFalse(result["periods"][2]["timing_fields_are_strings"])
+        self.assertNotIn("08:07", json.dumps(result))
+        self.assertNotIn("10:01", json.dumps(result))
 
     def test_complete_diagnostics_never_exposes_private_values(self):
         secret = "PRIVATE-VERY-SENSITIVE-TOKEN"
@@ -155,6 +172,66 @@ class PrivacyTests(unittest.TestCase):
         self.assertEqual(diag["integration"]["live_last_http_status"], 429)
         self.assertEqual(diag["wallbox_schema"]["time_periods"]["count"], 1)
         self.assertIn("chargingAmount", diag["live_data"]["available_fields"])
+
+
+    def test_g1t_schedule_diagnostics_expose_only_field_names(self):
+        secret = "PRIVATE-G1T-TOKEN"
+        serial = "G1T-PRIVATE-SERIAL"
+        data = {
+            "wallbox_serial": serial,
+            "configuration": {
+                "wallbox": {
+                    "sn": serial,
+                    "g1T": {
+                        "chargeStrategy": 1,
+                        "timePeriods": [
+                            {
+                                "startTime": "06:43",
+                                "endTime": "11:17",
+                                "isEnable": True,
+                                "chargeMode": 2,
+                                "token": secret,
+                            }
+                        ],
+                        "password": secret,
+                    },
+                }
+            },
+            "wallbox_status": {},
+        }
+
+        class FakeAPI:
+            @staticmethod
+            def _find_wallbox_data(document, key):
+                return document["wallbox"]
+
+        coordinator = SimpleNamespace(
+            data=data,
+            api=FakeAPI(),
+            update_interval=SimpleNamespace(total_seconds=lambda: 30),
+            _live_refresh_cancel=None,
+            _live_status_supported=False,
+            _live_refresh_errors=0,
+            _live_success_count=0,
+            _live_failure_count=0,
+            _full_success_count=1,
+            _full_failure_count=0,
+            _live_last_duration_ms=None,
+            _full_last_duration_ms=None,
+            _live_last_http_status=None,
+            last_update_success=True,
+        )
+        entry = SimpleNamespace(entry_id="g1t-test")
+        hass = SimpleNamespace(data={"alphaess_portal_bridge": {"g1t-test": coordinator}})
+        diag = asyncio.run(self.functions["async_get_config_entry_diagnostics"](hass, entry))
+        self.assertEqual(diag["portal_profile"], "g1T")
+        fields = diag["wallbox_schema"]["settings_fields"]
+        self.assertIn("chargeStrategy", fields)
+        self.assertIn("timePeriods", fields)
+        self.assertEqual(diag["wallbox_schema"]["time_periods"]["count"], 1)
+        exported = json.dumps(diag, sort_keys=True)
+        for forbidden in (secret, serial, "06:43", "11:17", '"password"', '"token"'):
+            self.assertNotIn(forbidden, exported)
 
 
 if __name__ == "__main__":
