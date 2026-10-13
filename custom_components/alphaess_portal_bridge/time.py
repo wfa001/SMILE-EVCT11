@@ -34,7 +34,7 @@ async def async_setup_entry(
 
 
 class AlphaESSTimePeriodTime(AlphaESSWallboxEntity, TimeEntity):
-    """Start or end time for one G2T schedule period."""
+    """Start/end times for G2T or a compatible G1T schedule period."""
 
     _attr_entity_category = EntityCategory.CONFIG
 
@@ -66,7 +66,7 @@ class AlphaESSTimePeriodTime(AlphaESSWallboxEntity, TimeEntity):
 
     @property
     def available(self) -> bool:
-        return super().available and self.settings_generation == "g2T" and bool(time_period(self.coordinator, self._index))
+        return super().available and self.settings_generation in {"g1T", "g2T"} and bool(time_period(self.coordinator, self._index))
 
     @property
     def native_value(self) -> time | None:

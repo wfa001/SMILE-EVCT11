@@ -360,9 +360,14 @@ class AlphaESSPortalApi:
             raise PortalConnectionError(step="wallbox settings")
 
         if charge_mode is not None:
-            allowed_modes = {1, 2, 3, 4} if generation == "g2T" else {0, 1, 2, 3, 4}
+            allowed_modes = {1, 2, 3, 4}
             if charge_mode not in allowed_modes:
                 raise ValueError("Nicht unterstützter Lademodus")
+            if generation == "g1T" and (
+                type(settings.get("chargeMode")) is not int
+                or settings["chargeMode"] not in {0, 1, 2, 3, 4}
+            ):
+                raise ValueError("G1T Lademodus ist im Portal nicht bestätigt")
             if generation == "g2T" and settings.get("smartMode") is True and charge_mode == 4:
                 raise ValueError("Smart Mode benötigt Langsamladung, Schonladung oder Schnellladung")
             settings["chargeMode"] = charge_mode
@@ -370,11 +375,21 @@ class AlphaESSPortalApi:
         if charge_current is not None:
             if not 6 <= charge_current <= 16:
                 raise ValueError("Der Ladestrom muss zwischen 6 und 16 A liegen")
+            if generation == "g1T" and (
+                type(settings.get("chargeCurrent")) is not int
+                or not 6 <= settings["chargeCurrent"] <= 16
+            ):
+                raise ValueError("G1T Ladestrom ist im Portal nicht bestätigt")
             settings["chargeCurrent"] = charge_current
 
         if charge_strategy is not None:
-            if generation != "g2T" or charge_strategy not in {0, 1, 2}:
+            if generation not in {"g1T", "g2T"} or charge_strategy not in {0, 1, 2}:
                 raise ValueError("Nicht unterstützte Ladeeinstellung")
+            if generation == "g1T" and (
+                type(settings.get("chargeStrategy")) is not int
+                or settings["chargeStrategy"] not in {0, 1, 2}
+            ):
+                raise ValueError("G1T Ladeeinstellung ist im Portal nicht bestätigt")
             if charge_strategy == 1 and settings.get("smartMode") is True:
                 raise ValueError(
                     "Smart Mode vor Wechsel auf Zeitgesteuertes Aufladen deaktivieren"
@@ -444,7 +459,7 @@ class AlphaESSPortalApi:
         charge_mode: int | None = None,
         charge_current: int | None = None,
     ) -> None:
-        """Update one of the three G2T time periods."""
+        """Update a confirmed G1T/G2T time period without adding unknown fields."""
         if index not in {0, 1, 2}:
             raise ValueError("Ungültiger Zeitrahmen: erlaubt sind Zeitrahmen 1 bis 3")
         configuration = await self._async_get(
@@ -453,12 +468,34 @@ class AlphaESSPortalApi:
         payload = copy.deepcopy(configuration)
         wallbox = self._find_wallbox_data(payload, self._wallbox_serial)
         generation, settings = self._settings_from_wallbox(wallbox)
-        if generation != "g2T" or settings is None:
-            raise ValueError("Zeitrahmen sind nur bei G2T-Wallboxen verfügbar")
+        if generation not in {"g1T", "g2T"} or settings is None:
+            raise ValueError("Zeitrahmen werden von dieser Wallbox nicht unterstützt")
         periods = settings.get("timePeriods")
-        if not isinstance(periods, list) or len(periods) < 3 or not isinstance(periods[index], dict):
+        if (
+            not isinstance(periods, list)
+            or len(periods) <= index
+            or (generation == "g2T" and len(periods) < 3)
+            or not isinstance(periods[index], dict)
+        ):
             raise PortalConnectionError(step="time period settings")
         period = periods[index]
+        if generation == "g1T":
+            # UI similarity does not prove that the G1T accepts G2T PATCH
+            # fields. Restrict test writes to fields already returned by the
+            # G1T portal, and require an existing matching timing schema.
+            if not all(
+                isinstance(period.get(key), str) for key in ("startTime", "endTime")
+            ):
+                raise ValueError("G1T Zeitrahmen hat keine kompatible Zeitstruktur")
+            for key, requested in (
+                ("isEnable", enabled),
+                ("startTime", start_time),
+                ("endTime", end_time),
+                ("chargeMode", charge_mode),
+                ("chargeCurrent", charge_current),
+            ):
+                if requested is not None and key not in period:
+                    raise ValueError(f"G1T Zeitrahmen unterstützt {key} nicht")
 
         if enabled is not None:
             period["isEnable"] = bool(enabled)
