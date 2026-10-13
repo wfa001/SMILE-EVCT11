@@ -2,15 +2,16 @@
 import ast
 from pathlib import Path
 import unittest
+from typing import Any
 from types import SimpleNamespace
 
 
 def load_helpers():
     path = Path(__file__).resolve().parents[1] / "custom_components/alphaess_portal_bridge/entity.py"
     module = ast.parse(path.read_text(encoding="utf-8"))
-    selected = {"settings_object", "time_period", "scheduled_charging_selected", "time_period_selected"}
+    selected = {"wallbox_object", "settings_object", "time_period", "scheduled_charging_selected", "time_period_selected"}
     nodes = [node for node in module.body if isinstance(node, ast.FunctionDef) and node.name in selected]
-    namespace = {}
+    namespace = {"Any": Any, "AlphaESSWallboxCoordinator": object}
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), str(path), "exec"), namespace)
     return namespace
 
