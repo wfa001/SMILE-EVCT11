@@ -88,7 +88,7 @@ def scheduled_charging_selected(coordinator: AlphaESSWallboxCoordinator) -> bool
     This only reports portal configuration, not physical timer execution.
     """
     generation, settings = settings_object(coordinator)
-    return generation in {"g1T", "g2T"} and settings.get("chargeStrategy") == 1
+    return schedule_supported(generation, settings) and settings.get("chargeStrategy") == 1
 
 
 def time_period_selected(coordinator: AlphaESSWallboxCoordinator, index: int) -> bool:
