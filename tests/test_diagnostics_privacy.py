@@ -24,7 +24,7 @@ def load_helpers():
             if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names)
             or (isinstance(node, ast.Assign) and any(
                 isinstance(target, ast.Name) and target.id in {
-                    "_WALLBOX_FIELDS", "_COMMON_SETTINGS", "_G2T_SETTINGS",
+                    "_WALLBOX_FIELDS", "_COMMON_SETTINGS", "_SCHEDULE_SETTINGS", "_G2T_SETTINGS",
                     "_LIVE_FIELDS", "_REPORT_FIELDS"
                 } for target in node.targets
             ))
