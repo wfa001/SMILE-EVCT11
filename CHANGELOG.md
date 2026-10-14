@@ -1,33 +1,12 @@
 # Changelog
 
-## Noch nicht veröffentlicht – minutengenaue G2T-Zeitschreibung
+## 0.5.72b – Beta
 
-- G2T-Zeitfenster können jetzt minutengenau (HH:MM, 00:00–23:59)
-  über die Portal-API geändert werden; keine Rundung auf Viertelstunden.
-- Praxisbestätigung vom 10.10.2026: PATCH 08:07–09:23 → HTTP 204;
-  gespeicherte Zeiten anschließend in AlphaESS-App und Home Assistant
-  korrekt angezeigt (ohne Fahrzeug; Ladeausführung nicht geprüft).
-- Time-Entitäten und Validierungstests auf Minuteneingabe umgestellt.
-- AlphaESS-Hinweis zu überlappenden Zeitfenstern ergänzt; keine Änderung
-  an Prioritäten, Ladeprogrammen oder nativer PV-/Smart-Mode-Regelung.
-- Keine Änderung der Integrations-/Release-Version; Maintainer entscheidet.
-
-## Noch nicht veröffentlicht – Testerfeedback
-
-- Anzeige der gewählten Ladeeinstellung und der laut Portal-Modus ausgewählten
-  Zeitfenster klargestellt. Gespeicherte Zeiträume bleiben unangetastet.
-- Der benutzerdefinierte Ladestrom wird ausdrücklich als Portal-Sollwert
-  und nicht als physisch bestätigter Istwert beschrieben.
-- Deaktivierte, ausgewählte und lediglich gespeicherte Timer nun
-  explizit anhand der Portal-Flags beschrieben; fehlende Aktivierungsflags
-  werden als unbekannt ausgewiesen.
-- G2T-Zeitfenster: Bereits gespeicherte Minuteneinstellungen aus der
-  AlphaESS-App werden ohne Rundung angezeigt. Schreibvorgänge bleiben
-  bis zu einem erfolgreichen API-Praxistest auf Viertelstunden begrenzt,
-  entsprechend der Weboberfläche.
-- Automatisierte Regressionstests für die Hinweise und minutengenaue
-  Zeitvalidierung ergänzt.
-
+- G2T-Zeitfenster lassen sich über die Portal-API minutengenau im Format `HH:MM` (00:00–23:59) einstellen und werden auch bei bereits in der AlphaESS-App gespeicherten Minutenwerten ohne Rundung angezeigt. Ein Praxistest bestätigte PATCH 08:07–09:23 mit HTTP 204 sowie die korrekte Anzeige in AlphaESS-App und Home Assistant; das tatsächliche Laden zu diesen Zeiten wurde nicht geprüft.
+- Anzeige der gewählten Ladeeinstellung und der anhand des Portal-Modus ausgewählten Zeitfenster präzisiert. Deaktivierte, ausgewählte und nur gespeicherte Timer werden anhand der Portal-Flags unterschieden; fehlen diese Flags, wird der Status als unbekannt ausgewiesen.
+- Der benutzerdefinierte Ladestrom wird als Portal-Sollwert bezeichnet, nicht als physisch bestätigter Istwert.
+- G2T-Livewerte werden unabhängig vom regulären Konfigurationsabruf etwa alle 5 Sekunden schreibgeschützt aktualisiert. Die Abfrage lädt weder erneut die Konfiguration noch den Ladebericht; ein kurzer gemeinsamer Cache vermeidet doppelte Anfragen. Bei Fehlern greift eine Wartezeit, bei Authentifizierungsfehlern und HTTP 429 bis zu 120 Sekunden. G1T-Abfrage, Bedienelemente und AlphaESS Smart Mode bleiben davon unberührt.
+- Hinweise zu überlappenden G2T-Zeitfenstern sowie automatisierte Regressionstests für Zeitvalidierung, Timer-Rückmeldungen und Live-Abfrage ergänzt.
 
 ## 0.5.7
 
@@ -61,33 +40,16 @@
 - Smart-Mode-Schutz für Zeitsteuerung, OBC-Phasenwahl und Lademodus ergänzt.
 - OBC-Auswahl 1/2/3 beibehalten; 2-phasig ausdrücklich als Sollwahl dokumentiert.
 - `chargingAmount` als **„In dieser Sitzung geladen“** und `lastChargingAmount` als **„Letzter Ladeabschnitt“** getrennt geführt.
-- separater Sensor **„Heute laut Ladebericht“**.
-- unnötige `null`-Attribute im Status reduziert.
+- Separater Sensor **„Heute laut Ladebericht“**.
+- Unnötige `null`-Attribute im Status reduziert.
 - Installateursteuerung und Kabel-Selbstverriegelung schreibbar.
-- öffentliche Beta-Dokumentation und bekannte Einschränkungen ergänzt.
+- Öffentliche Beta-Dokumentation und bekannte Einschränkungen ergänzt.
 
-### 0.5.11
-- Installateursteuerung und Kabel-Selbstverriegelung als schreibbare Schalter ergänzt und praktisch bestätigt.
+### Ältere Entwicklungsstände
 
-### 0.5.9
-- G2T-Schutz- und Validierungsfehler vereinheitlicht und auf Deutsch ausgegeben.
-
-### 0.5.8
-- Zeitrahmen auf das 15-Minuten-Raster des AlphaESS-Portals begrenzt.
-
-### 0.5.7
-- Hardware-Phasen als 1/2/3 dargestellt; nicht unterstützte Power-Share-Diagnosewerte ausgeblendet.
-
-### 0.5.4–0.5.6
-- Hausstrom-Einstellung schreibbar gemacht und G2T-Konfiguration weiter vervollständigt.
-
-### 0.5.1–0.5.3
-- grundlegende G2T-Erkennung, Status-, Lade-, OBC-, Zeitrahmen- und Energieentitäten aufgebaut.
-
-
-### Unreleased – G2T faster live status (draft)
-
-- Add an isolated, read-only 5-second live-status refresh for G2T; leave full configuration polling and charge-report caching unchanged.
-- Reuse a brief cache for overlapping live-status reads, and apply backoff after errors (120 seconds for HTTP 429/auth failures).
-- Keep G1T, existing controls and native AlphaESS PV Smart Mode unaffected.
-- Add mock regression tests. Real Home Assistant smoke testing and maintainer review are still required.
+- **0.5.11:** Installateursteuerung und Kabel-Selbstverriegelung als schreibbare Schalter ergänzt und praktisch bestätigt.
+- **0.5.9:** G2T-Schutz- und Validierungsfehler vereinheitlicht und auf Deutsch ausgegeben.
+- **0.5.8:** Zeitrahmen auf das 15-Minuten-Raster des AlphaESS-Portals begrenzt.
+- **0.5.7:** Hardware-Phasen als 1/2/3 dargestellt; nicht unterstützte Power-Share-Diagnosewerte ausgeblendet.
+- **0.5.4–0.5.6:** Hausstrom-Einstellung schreibbar gemacht und G2T-Konfiguration weiter vervollständigt.
+- **0.5.1–0.5.3:** Grundlegende G2T-Erkennung, Status-, Lade-, OBC-, Zeitrahmen- und Energieentitäten aufgebaut.
