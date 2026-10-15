@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.9 – Beta
+
+### G1T-Zeitfenster
+
+- Die beiden vom Portal gemeldeten G1T-Zeitfenster lassen sich in Home Assistant aktivieren und mit Start- und Endzeit bearbeiten.
+- Das Portal liefert für G1T keine Lademodi oder Stromwerte pro Zeitfenster. Dafür werden daher keine Bedienelemente angeboten und beim Speichern keine zusätzlichen API-Felder angelegt.
+- Der lokale Praxistest bestätigte, dass eine über Home Assistant geänderte Zeit im AlphaESS-Portal gespeichert wird. Die tatsächliche Ladeausführung nach Zeitplan wurde nicht geprüft.
+- Der G2T-Pfad bleibt erhalten.
+
 ## 0.5.72b – Beta
 
 ### G2T-Zeitfenster mit Minutengenauigkeit
