@@ -1,6 +1,6 @@
 # AlphaESS Wallbox Bridge
 
-> **Beta 0.5.7**  
+> **Beta 0.5.9**  
 > Entwickelt u.a. für die Community von **https://www.storion4you.de/**  
 > G2T-Erweiterung für **AlphaESS SMILE-G3-EVCT11/S**: **Kavino**  
 
