@@ -25,7 +25,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
-from .schedule import schedule_supported
+from .schedule import schedule_supported, strategy_supported
 
 from .const import (
     API_URL,
@@ -385,10 +385,12 @@ class AlphaESSPortalApi:
             settings["chargeCurrent"] = charge_current
 
         if charge_strategy is not None:
-            if generation not in {"g1T", "g2T"} or charge_strategy not in {0, 1, 2}:
-                raise ValueError("Nicht unterstützte Ladeeinstellung")
-            if generation == "g1T" and not schedule_supported(generation, settings):
-                raise ValueError("G1T Ladeeinstellung ist im Portal nicht bestätigt")
+            if (
+                generation not in {"g1T", "g2T"}
+                or charge_strategy not in {0, 1, 2}
+                or not strategy_supported(generation, settings)
+            ):
+                raise ValueError("Ladeeinstellung ist für dieses Portal-Schema nicht bestätigt")
             if charge_strategy == 1 and settings.get("smartMode") is True:
                 raise ValueError(
                     "Smart Mode vor Wechsel auf Zeitgesteuertes Aufladen deaktivieren"

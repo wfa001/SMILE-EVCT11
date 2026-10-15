@@ -14,7 +14,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_SYSTEM_SERIAL, DOMAIN
-from .schedule import schedule_supported
+from .schedule import schedule_supported, strategy_supported
 from .coordinator import AlphaESSWallboxCoordinator
 
 G1_MODES = {
@@ -73,8 +73,7 @@ def time_period(coordinator: AlphaESSWallboxCoordinator, index: int) -> dict[str
     period = periods[index]
     if not isinstance(period, dict):
         return {}
-    # G1T is experimental: expose a period only if the exact G2T-style
-    # timing fields are already present. Never manufacture unknown fields.
+    # G1T exposes only the two observed time periods. Never manufacture fields.
     if generation == "g1T" and not all(
         isinstance(period.get(key), str) for key in ("startTime", "endTime")
     ):
@@ -91,14 +90,19 @@ def scheduled_charging_selected(coordinator: AlphaESSWallboxCoordinator) -> bool
     return schedule_supported(generation, settings) and settings.get("chargeStrategy") == 1
 
 
-def time_period_selected(coordinator: AlphaESSWallboxCoordinator, index: int) -> bool:
+def time_period_selected(coordinator: AlphaESSWallboxCoordinator, index: int) -> bool | None:
     """Whether a configured time period is enabled in scheduled mode.
 
     Other strategies retain the saved periods so switching back to scheduled
     charging does not destroy the user's previous time configuration.
     """
+    generation, settings = settings_object(coordinator)
+    if not schedule_supported(generation, settings):
+        return None
+    if generation == "g1T" and not strategy_supported(generation, settings):
+        return None
     return (
-        scheduled_charging_selected(coordinator)
+        settings.get("chargeStrategy") == 1
         and time_period(coordinator, index).get("isEnable") is True
     )
 

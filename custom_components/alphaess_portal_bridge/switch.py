@@ -164,17 +164,22 @@ class AlphaESSTimePeriodSwitch(AlphaESSWallboxEntity, SwitchEntity):
         self._attr_name = f"Zeitrahmen {index + 1} Aktiv"
 
     @property
-    def extra_state_attributes(self) -> dict[str, str | bool]:
+    def extra_state_attributes(self) -> dict[str, str | bool | None]:
         return {
             "Zeitfenster laut Portal-Modus ausgewählt": time_period_selected(
                 self.coordinator, self._index
             ),
             "Zeitfenster-Status": time_period_status(self.coordinator, self._index),
             "Hinweis": (
-                "Aktiv zeigt nur die gespeicherte Freigabe dieses Zeitfensters. "
-                "Der Zeitplan ist nur bei Ladeeinstellung 'Zeitgesteuertes Aufladen' "
-                "ausgewählt. Ein Wechsel zu Plug and Play ändert die gespeicherten "
-                "Zeitfenster nicht."
+                "Aktiv zeigt die im Portal gespeicherte Freigabe dieses Zeitfensters. "
+                + (
+                    "Die G1T-Antwort enthält keine globale Ladeeinstellung; ob der "
+                    "Zeitplan insgesamt ausgewählt ist, bleibt daher unbekannt."
+                    if self.settings_generation == "g1T"
+                    else "Der Zeitplan ist nur bei Ladeeinstellung "
+                    "'Zeitgesteuertes Aufladen' ausgewählt. Ein Wechsel zu Plug and "
+                    "Play ändert die gespeicherten Zeitfenster nicht."
+                )
             ),
         }
 
