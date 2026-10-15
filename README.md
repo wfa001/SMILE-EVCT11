@@ -1,6 +1,6 @@
 # AlphaESS Wallbox Bridge
 
-> **Beta 0.5.7**  
+> **Beta 0.5.9**  
 > Entwickelt u.a. für die Community von **https://www.storion4you.de/**  
 > G2T-Erweiterung für **AlphaESS SMILE-G3-EVCT11/S**: **Kavino**  
 
@@ -37,7 +37,9 @@ Der Diagnose-Sensor **Portal-Profil** zeigt das erkannte Profil und das dazugeh�
 
 ### G1T
 
-Die bestehende G1T-Erkennung und -Konfiguration bleibt erhalten. Die G2T-spezifischen Schutzregeln greifen nicht in den G1T-Pfad ein.
+- Zwei vom Portal gemeldete Zeitfenster mit Aktivierung, Beginn und Ende können in Home Assistant gelesen und bearbeitet werden. Der lokale G1T-Test vom 15.10.2026 bestätigte, dass eine über Home Assistant geänderte Zeit im Portal ankommt. Das bestätigt die Speicherung, nicht die tatsächliche Ladeausführung.
+- Die G1T-Antwort enthält keine globale Ladeeinstellung und keine Lademodi oder Stromwerte pro Zeitfenster. Diese Bedienelemente bleiben deshalb unavailable; die Integration ergänzt keine nicht gemeldeten API-Felder.
+- Die G2T-spezifischen Schutzregeln greifen nicht in den G1T-Pfad ein.
 
 ## Hinweise aus dem Testerfeedback
 

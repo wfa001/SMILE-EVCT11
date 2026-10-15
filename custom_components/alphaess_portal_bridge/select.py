@@ -17,7 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .api import AuthenticationError, PortalConnectionError
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
-from .schedule import schedule_supported
+from .schedule import schedule_supported, strategy_supported
 from .entity import (
     G1_MODES,
     G2_MODES,
@@ -102,7 +102,7 @@ class AlphaESSWallboxStrategySelect(AlphaESSWallboxEntity, SelectEntity):
         return (
             super().available
             and (
-                schedule_supported(generation, settings)
+                strategy_supported(generation, settings)
             )
         )
 
@@ -188,7 +188,7 @@ class AlphaESSTimePeriodModeSelect(AlphaESSWallboxEntity, SelectEntity):
         self._attr_name = f"Zeitrahmen {index + 1} Lademodus"
 
     @property
-    def extra_state_attributes(self) -> dict[str, bool]:
+    def extra_state_attributes(self) -> dict[str, str | bool | None]:
         return {
             "Zeitfenster laut Portal-Modus ausgewählt": time_period_selected(
                 self.coordinator, self._index

@@ -52,7 +52,7 @@ class AlphaESSTimePeriodTime(AlphaESSWallboxEntity, TimeEntity):
         self._attr_name = f"Zeitrahmen {index + 1} {'Beginn' if boundary == 'start' else 'Ende'} (minutengenau)"
 
     @property
-    def extra_state_attributes(self) -> dict[str, str | bool]:
+    def extra_state_attributes(self) -> dict[str, str | bool | None]:
         return {
             "Hinweis": (
                 "Zeitfenster können minutengenau angezeigt und geschrieben werden. "
