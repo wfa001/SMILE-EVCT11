@@ -84,7 +84,8 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not full_ok and not live_ok:
             return "Getrennt"
         if (not full_ok or self._full_consecutive_errors
-                or (live_expected and (not live_ok or self._live_refresh_errors))):
+                or self._live_refresh_errors
+                or (live_expected and not live_ok)):
             return "Gestört"
         return "Verbunden"
 
