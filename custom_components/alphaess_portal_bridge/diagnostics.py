@@ -1,7 +1,6 @@
 """Privacy-first diagnostics for G1T and G2T portal profiles.
 
-No raw portal payload, arbitrary keys/values, serials, credentials, URLs,
-timestamps, energy readings, or charge reports ever enter the exported data.
+Standard downloads exclude raw portal content. Advanced downloads require an\nexplicit one-time opt-in and redact likely credentials (best effort).
 """
 from __future__ import annotations
 
