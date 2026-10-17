@@ -45,6 +45,7 @@ async def async_setup_entry(
     async_add_entities(
         [
             AlphaESSWallboxStatusSensor(coordinator, entry),
+            AlphaESSBridgeConnectionSensor(coordinator, entry),
             AlphaESSWallboxPowerSensor(coordinator, entry),
             AlphaESSYesNoSensor(coordinator, entry, "Fahrzeug angeschlossen", "vehicle_connected"),
             AlphaESSYesNoSensor(coordinator, entry, "Ladestecker verriegelt", "gun_locked"),
@@ -62,6 +63,52 @@ async def async_setup_entry(
             AlphaESSWallboxInformationSensor(coordinator, entry, "Hardware", "hardwareVersion"),
         ]
     )
+
+
+class AlphaESSBridgeConnectionSensor(AlphaESSWallboxEntity, SensorEntity):
+    """Portal API health for G1T and G2T, independent of device availability."""
+
+    _attr_name = "Wallbox Bridge Verbindung"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:cloud-check"
+
+    def __init__(self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "api_connection")
+
+    @property
+    def available(self) -> bool:
+        # Must remain visible while the portal is unavailable.
+        return True
+
+    @property
+    def native_value(self) -> str:
+        return self.coordinator.api_connection_status
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        coordinator = self.coordinator
+        return {
+            "Hinweis": "Verbindung zur AlphaESS-Portal-API, nicht Wallbox online/offline",
+            "Letzte erfolgreiche Live-Abfrage": (
+                coordinator._last_live_success.isoformat()
+                if coordinator._last_live_success else None
+            ),
+            "Letzte erfolgreiche Konfigurationsabfrage": (
+                coordinator._last_full_success.isoformat()
+                if coordinator._last_full_success else None
+            ),
+            "Live-Abfragen erfolgreich": coordinator._live_success_count,
+            "Live-Abfragen fehlgeschlagen": coordinator._live_failure_count,
+            "Konfigurationsabfragen erfolgreich": coordinator._full_success_count,
+            "Konfigurationsabfragen fehlgeschlagen": coordinator._full_failure_count,
+            "Live-Fehler in Folge": coordinator._live_refresh_errors,
+            "Konfigurationsfehler in Folge": coordinator._full_consecutive_errors,
+            "Letzte Live-Antwortzeit (ms)": coordinator._live_last_duration_ms,
+            "Letzte Konfigurationsantwortzeit (ms)": coordinator._full_last_duration_ms,
+            "Letzter Live-HTTP-Fehler": coordinator._live_last_http_status,
+            "Letzter API-Fehler": coordinator._last_api_error,
+            "Live-Endpunkt unterstützt": coordinator._live_status_supported,
+        }
 
 
 class AlphaESSWallboxStatusSensor(AlphaESSWallboxEntity, SensorEntity):
