@@ -5,6 +5,7 @@ timestamps, energy readings, or charge reports ever enter the exported data.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -32,6 +33,30 @@ _LIVE_FIELDS = (
     "phase", "faultCode",
 )
 _REPORT_FIELDS = ("beginDate", "endDate", "chargingCapacity", "chargingWorkModel")
+
+
+
+# Discover diagnostic-looking keys without exporting arbitrary API data.
+_DIAGNOSTIC_KEY = re.compile(
+    r"(?i)(?:status|fault|error|alarm|online|offline|connect|communicat|rs485|warning|health|reachable)"
+)
+_SAFE_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_]{1,63}$")
+_SENSITIVE_KEY = re.compile(
+    r"(?i)(?:token|secret|password|credential|session|email|username|userId|serial|phone|address|auth|cookie)"
+)
+
+
+def _diagnostic_field_names(document: Any) -> list[str]:
+    """Return only filtered API field names, never their values."""
+    if not isinstance(document, dict):
+        return []
+    return sorted(
+        key for key in document
+        if isinstance(key, str)
+        and _SAFE_KEY.fullmatch(key)
+        and _DIAGNOSTIC_KEY.search(key)
+        and not _SENSITIVE_KEY.search(key)
+    )[:40]
 
 
 def _present_fields(document: Any, allowed: tuple[str, ...]) -> list[str]:
@@ -96,9 +121,9 @@ async def async_get_config_entry_diagnostics(
     status = data.get("wallbox_status")
     report = data.get("latest_report")
     return {
-        "diagnostics_schema": 1,
+        "diagnostics_schema": 2,
         "privacy": {
-            "mode": "allowlist_only",
+            "mode": "allowlist_values_and_filtered_diagnostic_keys",
             "contains_raw_api_responses": False,
             "contains_identifiers_or_credentials": False,
             "contains_charge_history_values": False,
@@ -127,6 +152,8 @@ async def async_get_config_entry_diagnostics(
             ),
             "automatic_cable_lock": _bool_capability(settings, "isSupportGunLineSelfLock"),
             "time_periods": _period_schema(settings),
+            "diagnostic_field_names": _diagnostic_field_names(wallbox),
+            "settings_diagnostic_field_names": _diagnostic_field_names(settings),
             "g1t_time_period_schema_matches": (
                 g1t_schedule_schema_matches(settings) if generation == "g1T" else None
             ),
@@ -137,6 +164,7 @@ async def async_get_config_entry_diagnostics(
         "live_data": {
             "source": "real_status" if data.get("wallbox_status_source") == "real_status" else "system_or_unknown",
             "available_fields": _present_fields(status, _LIVE_FIELDS),
+            "diagnostic_field_names": _diagnostic_field_names(status),
         },
         "charge_report": {
             "available_fields": _present_fields(report, _REPORT_FIELDS),
