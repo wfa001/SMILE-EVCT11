@@ -64,6 +64,7 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_live_success: datetime | None = None
         self._last_full_success: datetime | None = None
         self._last_api_error: str | None = None
+        self._advanced_diagnostics_until: float = 0.0
         self._full_consecutive_errors = 0
         self._live_revision = 0
         self._latest_live_status: dict[str, Any] | None = None
