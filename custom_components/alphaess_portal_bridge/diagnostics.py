@@ -6,6 +6,7 @@ timestamps, energy readings, or charge reports ever enter the exported data.
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -57,6 +58,43 @@ def _diagnostic_field_names(document: Any) -> list[str]:
         and _DIAGNOSTIC_KEY.search(key)
         and not _SENSITIVE_KEY.search(key)
     )[:40]
+
+
+# Hard stop on authentication and private-account fields. Unknown fields are
+# included unless they look like secrets; this export still requires care.
+_SECRET_KEYS = re.compile(
+    r"(?i)(?:password|passwd|secret|token|authorization|authentication|cookie|api.?key|"
+    r"private.?key|refresh|credential|bearer|session.?id|email|phone|mobile|address)"
+)
+_SECRET_VALUE = re.compile(
+    r"(?i)(?:^bearer\\s|^basic\\s|^sk-[A-Za-z0-9_-]+|"
+    r"^[A-Za-z0-9_-]{30,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}$)"
+)
+
+
+def _safe_snapshot(value: Any, depth: int = 0) -> Any:
+    """Bounded redacted copy of an API data object, with no automatic persistence."""
+    if depth > 10:
+        return "[depth limit]"
+    if isinstance(value, dict):
+        result = {}
+        for key, item in list(value.items())[:150]:
+            if not isinstance(key, str) or len(key) > 100:
+                continue
+            result[key] = (
+                "[REDACTED]" if _SECRET_KEYS.search(key)
+                else _safe_snapshot(item, depth + 1)
+            )
+        return result
+    if isinstance(value, list):
+        return [_safe_snapshot(item, depth + 1) for item in value[:30]]
+    if isinstance(value, str):
+        if _SECRET_VALUE.search(value):
+            return "[REDACTED]"
+        return value[:512]
+    if type(value) in (bool, int, float) or value is None:
+        return value
+    return "[unsupported type]"
 
 
 def _present_fields(document: Any, allowed: tuple[str, ...]) -> list[str]:
@@ -120,7 +158,10 @@ async def async_get_config_entry_diagnostics(
     generation, settings = AlphaESSPortalApi._settings_from_wallbox(wallbox)
     status = data.get("wallbox_status")
     report = data.get("latest_report")
-    return {
+    # Button permission expires after 5 minutes and is consumed once.
+    advanced = time.monotonic() <= coordinator._advanced_diagnostics_until
+    coordinator._advanced_diagnostics_until = 0.0
+    result = {
         "diagnostics_schema": 2,
         "privacy": {
             "mode": "allowlist_values_and_filtered_diagnostic_keys",
@@ -171,3 +212,13 @@ async def async_get_config_entry_diagnostics(
             "daily_report_value_available": isinstance(data.get("today_report_energy"), (int, float)),
         },
     }
+    if advanced:
+        result["advanced_api_snapshot"] = {
+            "warning": "Private debug export: review before sharing; redaction is best effort.",
+            "source": "last cached portal responses; no additional requests",
+            "system": _safe_snapshot(data.get("system")),
+            "configuration": _safe_snapshot(configuration),
+            "live_status": _safe_snapshot(status),
+            "latest_charge_report": _safe_snapshot(report),
+        }
+    return result
