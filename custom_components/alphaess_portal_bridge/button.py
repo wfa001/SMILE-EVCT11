@@ -7,6 +7,10 @@
 # ---------------------------------------------------------------------------
 from __future__ import annotations
 
+import time
+
+from homeassistant.const import EntityCategory
+
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -27,6 +31,7 @@ async def async_setup_entry(
         [
             AlphaESSWallboxControlButton(coordinator, entry, "START"),
             AlphaESSWallboxControlButton(coordinator, entry, "STOP"),
+            AlphaESSAdvancedDiagnosticsButton(coordinator, entry),
         ]
     )
 
@@ -66,3 +71,19 @@ class AlphaESSWallboxControlButton(AlphaESSWallboxEntity, ButtonEntity):
         except (AuthenticationError, PortalConnectionError) as err:
             raise HomeAssistantError("Der Wallbox-Befehl wurde vom Live-Status abgelehnt") from err
         await self.coordinator.async_request_refresh()
+
+
+class AlphaESSAdvancedDiagnosticsButton(AlphaESSWallboxEntity, ButtonEntity):
+    """Temporarily allow a sanitized extended snapshot in HA diagnostics."""
+
+    _attr_name = "Erweiterte API-Diagnose freigeben"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:file-search-outline"
+
+    def __init__(self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "advanced_diagnostics")
+
+    async def async_press(self) -> None:
+        # Valid for 5 minutes, consumed by the next diagnostics download.
+        # No remote commands or additional API calls are made.
+        self.coordinator._advanced_diagnostics_until = time.monotonic() + 300
