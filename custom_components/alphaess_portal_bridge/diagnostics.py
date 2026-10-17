@@ -66,8 +66,8 @@ _SECRET_KEYS = re.compile(
     r"private.?key|refresh|credential|bearer|session.?id|email|phone|mobile|address)"
 )
 _SECRET_VALUE = re.compile(
-    r"(?i)(?:^bearer\\s|^basic\\s|^sk-[A-Za-z0-9_-]+|"
-    r"^[A-Za-z0-9_-]{30,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}$)"
+    r"(?i)(?:^bearer\s|^basic\s|^sk-[A-Za-z0-9_-]+|"
+    r"^[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$)"
 )
 
 
