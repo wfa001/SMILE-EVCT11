@@ -1,10 +1,11 @@
 """Privacy-first diagnostics for G1T and G2T portal profiles.
 
-No raw portal payload, arbitrary keys/values, serials, credentials, URLs,
-timestamps, energy readings, or charge reports ever enter the exported data.
+Standard downloads exclude raw portal content. Advanced downloads require an\nexplicit one-time opt-in and redact likely credentials (best effort).
 """
 from __future__ import annotations
 
+import re
+import time
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -32,6 +33,67 @@ _LIVE_FIELDS = (
     "phase", "faultCode",
 )
 _REPORT_FIELDS = ("beginDate", "endDate", "chargingCapacity", "chargingWorkModel")
+
+
+
+# Discover diagnostic-looking keys without exporting arbitrary API data.
+_DIAGNOSTIC_KEY = re.compile(
+    r"(?i)(?:status|fault|error|alarm|online|offline|connect|communicat|rs485|warning|health|reachable)"
+)
+_SAFE_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_]{1,63}$")
+_SENSITIVE_KEY = re.compile(
+    r"(?i)(?:token|secret|password|credential|session|email|username|userId|serial|phone|address|auth|cookie)"
+)
+
+
+def _diagnostic_field_names(document: Any) -> list[str]:
+    """Return only filtered API field names, never their values."""
+    if not isinstance(document, dict):
+        return []
+    return sorted(
+        key for key in document
+        if isinstance(key, str)
+        and _SAFE_KEY.fullmatch(key)
+        and _DIAGNOSTIC_KEY.search(key)
+        and not _SENSITIVE_KEY.search(key)
+    )[:40]
+
+
+# Hard stop on authentication and private-account fields. Unknown fields are
+# included unless they look like secrets; this export still requires care.
+_SECRET_KEYS = re.compile(
+    r"(?i)(?:password|passwd|secret|token|authorization|authentication|cookie|api.?key|"
+    r"private.?key|refresh|credential|bearer|session.?id|email|phone|mobile|address)"
+)
+_SECRET_VALUE = re.compile(
+    r"(?i)(?:^bearer\s|^basic\s|^sk-[A-Za-z0-9_-]+|"
+    r"^[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$)"
+)
+
+
+def _safe_snapshot(value: Any, depth: int = 0) -> Any:
+    """Bounded redacted copy of an API data object, with no automatic persistence."""
+    if depth > 10:
+        return "[depth limit]"
+    if isinstance(value, dict):
+        result = {}
+        for key, item in list(value.items())[:150]:
+            if not isinstance(key, str) or len(key) > 100:
+                continue
+            result[key] = (
+                "[REDACTED]" if _SECRET_KEYS.search(key)
+                else _safe_snapshot(item, depth + 1)
+            )
+        return result
+    if isinstance(value, list):
+        return [_safe_snapshot(item, depth + 1) for item in value[:30]]
+    if isinstance(value, str):
+        if _SECRET_VALUE.search(value):
+            return "[REDACTED]"
+        return value[:512]
+    if type(value) in (bool, int, float) or value is None:
+        return value
+    return "[unsupported type]"
 
 
 def _present_fields(document: Any, allowed: tuple[str, ...]) -> list[str]:
@@ -95,10 +157,13 @@ async def async_get_config_entry_diagnostics(
     generation, settings = AlphaESSPortalApi._settings_from_wallbox(wallbox)
     status = data.get("wallbox_status")
     report = data.get("latest_report")
-    return {
-        "diagnostics_schema": 1,
+    # Button permission expires after 5 minutes and is consumed once.
+    advanced = time.monotonic() <= coordinator._advanced_diagnostics_until
+    coordinator._advanced_diagnostics_until = 0.0
+    result = {
+        "diagnostics_schema": 2,
         "privacy": {
-            "mode": "allowlist_only",
+            "mode": "allowlist_values_and_filtered_diagnostic_keys",
             "contains_raw_api_responses": False,
             "contains_identifiers_or_credentials": False,
             "contains_charge_history_values": False,
@@ -127,6 +192,8 @@ async def async_get_config_entry_diagnostics(
             ),
             "automatic_cable_lock": _bool_capability(settings, "isSupportGunLineSelfLock"),
             "time_periods": _period_schema(settings),
+            "diagnostic_field_names": _diagnostic_field_names(wallbox),
+            "settings_diagnostic_field_names": _diagnostic_field_names(settings),
             "g1t_time_period_schema_matches": (
                 g1t_schedule_schema_matches(settings) if generation == "g1T" else None
             ),
@@ -137,9 +204,20 @@ async def async_get_config_entry_diagnostics(
         "live_data": {
             "source": "real_status" if data.get("wallbox_status_source") == "real_status" else "system_or_unknown",
             "available_fields": _present_fields(status, _LIVE_FIELDS),
+            "diagnostic_field_names": _diagnostic_field_names(status),
         },
         "charge_report": {
             "available_fields": _present_fields(report, _REPORT_FIELDS),
             "daily_report_value_available": isinstance(data.get("today_report_energy"), (int, float)),
         },
     }
+    if advanced:
+        result["advanced_api_snapshot"] = {
+            "warning": "Private debug export: review before sharing; redaction is best effort.",
+            "source": "last cached portal responses; no additional requests",
+            "system": _safe_snapshot(data.get("system")),
+            "configuration": _safe_snapshot(configuration),
+            "live_status": _safe_snapshot(status),
+            "latest_charge_report": _safe_snapshot(report),
+        }
+    return result

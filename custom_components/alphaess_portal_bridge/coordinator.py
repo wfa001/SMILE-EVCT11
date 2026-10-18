@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
@@ -60,9 +61,34 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._full_success_count = 0
         self._full_failure_count = 0
         self._live_last_http_status: int | None = None
+        self._last_live_success: datetime | None = None
+        self._last_full_success: datetime | None = None
+        self._last_api_error: str | None = None
+        self._advanced_diagnostics_until: float = 0.0
+        self._full_consecutive_errors = 0
         self._live_revision = 0
         self._latest_live_status: dict[str, Any] | None = None
         self.api.set_settings_written_callback(self._schedule_followup_refresh)
+
+    @property
+    def api_connection_status(self) -> str:
+        """Connection to the AlphaESS portal, not the physical wallbox."""
+        now = datetime.now(timezone.utc)
+        full_age = ((now - self._last_full_success).total_seconds()
+                    if self._last_full_success else float("inf"))
+        live_age = ((now - self._last_live_success).total_seconds()
+                    if self._last_live_success else float("inf"))
+        full_limit = max(90, 3 * self.update_interval.total_seconds())
+        live_expected = self._live_status_supported is True
+        full_ok = full_age <= full_limit
+        live_ok = live_expected and live_age <= 25
+        if not full_ok and not live_ok:
+            return "Getrennt"
+        if (not full_ok or self._full_consecutive_errors
+                or self._live_refresh_errors
+                or (live_expected and not live_ok)):
+            return "Gestört"
+        return "Verbunden"
 
     def start_live_polling(self) -> None:
         """Start a separate read-only five-second cycle for both generations."""
@@ -112,6 +138,7 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return
             self._live_status_supported = True
             self._live_success_count += 1
+            self._last_live_success = datetime.now(timezone.utc)
             self._live_last_http_status = None
             if not self._stopped:
                 self._latest_live_status = status
@@ -136,6 +163,9 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.warning("G1T fast live-status unavailable; using regular refresh only")
                 return
             self._live_refresh_errors += 1
+            self._last_api_error = f"Live-Status: {err.step} (HTTP {getattr(err, 'status', None)})"
+            if not self._stopped:
+                self.async_update_listeners()
             if isinstance(err, AuthenticationError) or getattr(err, "status", None) in (401, 403, 429):
                 delay = _G2T_LIVE_MAX_BACKOFF_SECONDS
             else:
@@ -199,9 +229,13 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "wallbox_status_source": "real_status",
                 }
             self._full_success_count += 1
+            self._last_full_success = datetime.now(timezone.utc)
+            self._full_consecutive_errors = 0
             return refreshed
         except (AuthenticationError, PortalConnectionError) as err:
             self._full_failure_count += 1
+            self._full_consecutive_errors += 1
+            self._last_api_error = f"Konfiguration: {err.step} (HTTP {getattr(err, 'status', None)})"
             _LOGGER.warning(
                 "AlphaESS wallbox refresh failed during %s with status %s",
                 err.step,
