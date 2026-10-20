@@ -59,7 +59,7 @@ class AlphaESSWallboxControlButton(AlphaESSWallboxEntity, ButtonEntity):
         allowed = (
             {"PendingStart", "ChargingStopped", "CharingStopped"}
             if self._control == "START"
-            else {"Charging"}
+            else {"Charging", "WaitingForChargingPile"}
         )
         return status in allowed
 
