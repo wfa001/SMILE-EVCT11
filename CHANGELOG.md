@@ -1,5 +1,13 @@
 # Changelog
 
+## Unveröffentlicht
+
+### Wallbox-Steuerung
+
+- Erlaubt STOP im Zustand `WaitingForChargingPile` sowohl über den Stopp-Button als auch über die API. Die AlphaESS-App ermöglichte in diesem Zustand bereits einen erfolgreichen Stopp mit anschließendem Neustart der Ladung.
+- Bestehende START-Freigaben und Schutzbedingungen bleiben erhalten. Kein automatischer Stopp-/Startablauf ergänzt.
+- Der Funktionstest über die angepasste Bridge steht noch aus.
+
 ## 0.5.9 – Beta
 
 ### G1T-Zeitfenster
