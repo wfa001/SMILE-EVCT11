@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.92 – Unveröffentlicht
+## 0.5.92 – Beta
 
 ### Wallbox-Steuerung
 
