@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.92 – Unveröffentlicht
+
+### Wallbox-Steuerung
+
+- Erlaubt STOP im Zustand `WaitingForChargingPile` sowohl über den Stopp-Button als auch über die API. Der Anlagenbetreiber konnte in diesem Zustand über die AlphaESS-App bereits durch Stopp und anschließenden Start die Ladung beginnen.
+- Bestehende START-Freigaben, die G2T-Bedingung Ladeeinstellung Manuell und die Live-Statusprüfung bleiben erhalten. Kein automatischer Stopp-/Startablauf ergänzt.
+- Die lokale Änderung wurde gespeichert und zurückgelesen; die HA-Konfigurationsprüfung war erfolgreich. Der Funktionstest über die angepasste Bridge steht noch aus.
+
+## 0.5.91 – Beta
+
+### API-Diagnose und Grafiken
+
+- Ergänzt einen Diagnose-Sensor für den Verbindungsstatus zur AlphaESS-Portal-API und verbessert die Fehlerdiagnose für G1T und G2T.
+- Über eine Schaltfläche lässt sich vorübergehend eine einmalige erweiterte Diagnoseausgabe bereits zwischengespeicherter API-Daten freigeben. Dafür erfolgen keine zusätzlichen API-Abfragen oder Änderungen an Wallbox-Einstellungen.
+- Vertrauliche Daten werden nach bestem Bemühen gefiltert; Diagnoseberichte vor einer Weitergabe prüfen.
+- G1T- und G2T-Wallboxbilder sowie das Integrationssymbol durch transparente Grafiken ersetzt.
+
 ## 0.5.9 – Beta
 
 ### G1T-Zeitfenster
