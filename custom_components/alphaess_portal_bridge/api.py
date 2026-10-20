@@ -328,7 +328,7 @@ class AlphaESSPortalApi:
         allowed = (
             {"PendingStart", "ChargingStopped", "CharingStopped"}
             if control == "START"
-            else {"Charging"}
+            else {"Charging", "WaitingForChargingPile"}
         )
         if status not in allowed:
             raise PortalConnectionError(step="wallbox control blocked")
