@@ -21,6 +21,7 @@ from homeassistant.helpers.selector import (
 
 from .api import AlphaESSPortalApi, AuthenticationError, PortalConnectionError
 from .const import (
+    CONF_AUTHENTICATION_PAUSED,
     CONF_PASSWORD,
     CONF_SYSTEM_SERIAL,
     CONF_UPDATE_INTERVAL,
@@ -62,7 +63,9 @@ class AlphaESSPortalBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await api.async_validate_login()
             except AuthenticationError as err:
                 errors["base"] = (
-                    "session_rejected"
+                    "login_paused"
+                    if err.status in (409, 429)
+                    else "session_rejected"
                     if err.step == "session validation"
                     else "system_access_denied"
                     if err.step == "system check"
@@ -113,6 +116,51 @@ class AlphaESSPortalBridgeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=vol.Schema({vol.Required(CONF_WALLBOX_SERIAL): str}),
+        )
+
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> FlowResult:
+        """Ask for credentials; opening the form never performs a login."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Validate once per submission, preserving the existing entry/entities."""
+        entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+        description_placeholders: dict[str, str] | None = None
+        if user_input is not None:
+            updates = {
+                CONF_USERNAME: user_input[CONF_USERNAME].strip(),
+                CONF_PASSWORD: user_input[CONF_PASSWORD],
+                CONF_AUTHENTICATION_PAUSED: False,
+            }
+            api = AlphaESSPortalApi(self.hass, {**entry.data, **updates})
+            try:
+                await api.async_validate_login()
+            except AuthenticationError as err:
+                errors["base"] = (
+                    "login_paused" if err.status in (409, 429) else "invalid_auth"
+                )
+            except PortalConnectionError as err:
+                if err.status is None:
+                    errors["base"] = "cannot_connect"
+                else:
+                    errors["base"] = "portal_status"
+                    description_placeholders = {"step": err.step, "status": str(err.status)}
+            else:
+                return self.async_update_reload_and_abort(entry, data_updates=updates)
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_USERNAME, default=entry.data[CONF_USERNAME]): str,
+                    vol.Required(CONF_PASSWORD): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders=description_placeholders,
         )
 
 

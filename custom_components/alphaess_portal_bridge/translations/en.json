@@ -17,6 +17,14 @@
         "data": {
           "wallbox_serial": "Wallbox serial number"
         }
+      },
+      "reauth_confirm": {
+        "title": "Update AlphaESS credentials",
+        "description": "Sign-in was rejected. Automatic attempts have stopped. Wait for any account lockout shown by AlphaESS to expire, then enter your current credentials. Only submitting this form starts another sign-in attempt.",
+        "data": {
+          "username": "Username or email address",
+          "password": "Current password"
+        }
       }
     },
     "error": {
@@ -24,10 +32,12 @@
       "session_rejected": "The login succeeded, but the portal has not released the new session yet.",
       "system_access_denied": "The login succeeded, but the portal is still denying access to this system.",
       "cannot_connect": "The AlphaESS portal is currently unavailable.",
-      "portal_status": "The AlphaESS portal returned status {status} during {step}."
+      "portal_status": "The AlphaESS portal returned status {status} during {step}.",
+      "login_paused": "AlphaESS rejected sign-in with status 409 or 429. Wait for any lockout shown by AlphaESS before submitting again."
     },
     "abort": {
-      "reconfigure_successful": "The wallbox was assigned."
+      "reconfigure_successful": "The wallbox was assigned.",
+      "reauth_successful": "Credentials updated successfully."
     }
   },
   "options": {

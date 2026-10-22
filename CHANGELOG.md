@@ -1,5 +1,14 @@
 # Changelog
 
+## Unveröffentlicht
+
+### Anmeldung nach Passwortwechsel
+
+- Stoppt automatische Anmeldeversuche bei abgelehnten Zugangsdaten und bei HTTP 409/429 während der Anmeldung. Die Pause bleibt nach Neuladen und Neustart erhalten.
+- Ergänzt die erneute Authentifizierung in Home Assistant: Zugangsdaten nach Ablauf einer etwaigen AlphaESS-Sperre aktualisieren, ohne die Integration oder ihre Entitäten zu löschen.
+- Serialisiert parallele Sitzungsanfragen, damit wartende Abfragen nach einer Ablehnung nicht erneut dasselbe Passwort senden. Normale Verbindungsfehler und G1T-Live-Status-Konflikte bleiben getrennt behandelt.
+- Ergänzt Regressionstests ohne Cloud-Zugriff. Keine neue Versionsnummer oder Veröffentlichung.
+
 ## 0.5.92 – Beta
 
 ### Wallbox-Steuerung

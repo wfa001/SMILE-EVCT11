@@ -15,11 +15,17 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import AlphaESSPortalApi, AuthenticationError, PortalConnectionError
-from .const import DEFAULT_UPDATE_INTERVAL_SECONDS, DOMAIN, UPDATE_INTERVAL_OPTIONS
+from .const import (
+    CONF_AUTHENTICATION_PAUSED,
+    DEFAULT_UPDATE_INTERVAL_SECONDS,
+    DOMAIN,
+    UPDATE_INTERVAL_OPTIONS,
+)
 
 _LOGGER = logging.getLogger(__name__)
 _POST_WRITE_READBACK_SECONDS = 3
@@ -150,7 +156,13 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 }
                 self._live_refresh_errors = 0
                 self.async_update_listeners()
-        except (AuthenticationError, PortalConnectionError) as err:
+        except AuthenticationError as err:
+            self._live_failure_count += 1
+            self.async_set_update_error(self._authentication_failed(err))
+            if self.config_entry:
+                self.config_entry.async_start_reauth(self.hass)
+            return
+        except PortalConnectionError as err:
             self._live_failure_count += 1
             status_code = getattr(err, "status", None)
             self._live_last_http_status = status_code if type(status_code) is int and 100 <= status_code <= 599 else None
@@ -166,7 +178,7 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._last_api_error = f"Live-Status: {err.step} (HTTP {getattr(err, 'status', None)})"
             if not self._stopped:
                 self.async_update_listeners()
-            if isinstance(err, AuthenticationError) or getattr(err, "status", None) in (401, 403, 429):
+            if getattr(err, "status", None) in (401, 403, 429):
                 delay = _G2T_LIVE_MAX_BACKOFF_SECONDS
             else:
                 delay = min(
@@ -187,6 +199,23 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._live_refresh_cancel is not None:
             self._live_refresh_cancel()
             self._live_refresh_cancel = None
+
+    def _authentication_failed(self, err: AuthenticationError) -> ConfigEntryAuthFailed:
+        """Stop both extra polling timers and request explicit reauthentication."""
+        self.stop_followup_refresh()
+        self.stop_live_polling()
+        if self.config_entry and not self.config_entry.data.get(CONF_AUTHENTICATION_PAUSED):
+            # Keep the pause over reloads/restarts. Otherwise the old password
+            # would be submitted again as soon as a new API instance is made.
+            self.hass.config_entries.async_update_entry(
+                self.config_entry,
+                data={**self.config_entry.data, CONF_AUTHENTICATION_PAUSED: True},
+            )
+        self._last_api_error = f"Authentication: {err.step} (HTTP {err.status})"
+        return ConfigEntryAuthFailed(
+            "AlphaESS sign-in rejected; automatic attempts stopped. "
+            "Wait for any portal lockout to expire, then update your credentials."
+        )
 
     def _schedule_followup_refresh(self) -> None:
         """Read back accepted settings after portal propagation, without waiting.
@@ -232,7 +261,11 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._last_full_success = datetime.now(timezone.utc)
             self._full_consecutive_errors = 0
             return refreshed
-        except (AuthenticationError, PortalConnectionError) as err:
+        except AuthenticationError as err:
+            self._full_failure_count += 1
+            self._full_consecutive_errors += 1
+            raise self._authentication_failed(err) from err
+        except PortalConnectionError as err:
             self._full_failure_count += 1
             self._full_consecutive_errors += 1
             self._last_api_error = f"Konfiguration: {err.step} (HTTP {getattr(err, 'status', None)})"

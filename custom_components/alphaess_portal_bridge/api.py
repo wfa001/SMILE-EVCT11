@@ -29,6 +29,7 @@ from .schedule import schedule_supported, strategy_supported
 
 from .const import (
     API_URL,
+    CONF_AUTHENTICATION_PAUSED,
     CONF_PASSWORD,
     CONF_SYSTEM_SERIAL,
     CONF_USERNAME,
@@ -47,8 +48,9 @@ PORTAL_HEADERS = {
 class AuthenticationError(Exception):
     """The portal did not authorize the current session."""
 
-    def __init__(self, step: str = "login") -> None:
+    def __init__(self, step: str = "login", *, status: int | None = None) -> None:
         self.step = step
+        self.status = status
         super().__init__(f"Portal authorization failed during {step}")
 
 
@@ -102,6 +104,12 @@ class AlphaESSPortalApi:
 
     def __init__(self, hass: HomeAssistant, config: dict[str, Any]) -> None:
         self._session = async_get_clientsession(hass)
+        self._token_lock = asyncio.Lock()
+        self._authentication_error: AuthenticationError | None = (
+            AuthenticationError("reauthentication required")
+            if config.get(CONF_AUTHENTICATION_PAUSED)
+            else None
+        )
         self._settings_write_lock = asyncio.Lock()
         self._live_status_lock = asyncio.Lock()
         self._live_status_cache: dict[str, Any] | None = None
@@ -600,6 +608,27 @@ class AlphaESSPortalApi:
         return {}
 
     async def _async_token(self) -> str:
+        # Full polling, fast polling and commands share one login. After a
+        # rejection, queued calls must not submit the same credentials again.
+        async with self._token_lock:
+            if self._authentication_error is not None:
+                raise self._authentication_error
+            try:
+                return await self._async_create_token()
+            except AuthenticationError as err:
+                self._authentication_error = err
+                self._token = None
+                self._refresh_token = None
+                raise
+
+    def _reject_authentication(self, step: str, status: int) -> AuthenticationError:
+        """Pause this API instance until credentials are explicitly replaced."""
+        self._authentication_error = AuthenticationError(step, status=status)
+        self._token = None
+        self._refresh_token = None
+        return self._authentication_error
+
+    async def _async_create_token(self) -> str:
         if self._token and time.monotonic() < self._expires_at:
             return self._token
 
@@ -639,8 +668,8 @@ class AlphaESSPortalApi:
                 headers=PORTAL_HEADERS,
                 timeout=aiohttp.ClientTimeout(total=20),
             ) as response:
-                if response.status in (400, 401, 403):
-                    raise AuthenticationError
+                if response.status in (400, 401, 403, 409, 429):
+                    raise self._reject_authentication("region lookup", response.status)
                 if response.status != 200:
                     raise PortalConnectionError(response.status, "region lookup")
                 region = await response.json()
@@ -670,8 +699,10 @@ class AlphaESSPortalApi:
                 headers=PORTAL_HEADERS,
                 timeout=aiohttp.ClientTimeout(total=20),
             ) as response:
-                if response.status in (400, 401, 403):
-                    raise AuthenticationError
+                # A login conflict or rate limit must not cause more password
+                # attempts. 409 elsewhere (e.g. G1T live status) is unrelated.
+                if response.status in (400, 401, 403, 409, 429):
+                    raise self._reject_authentication("login", response.status)
                 if response.status not in (200, 201):
                     raise PortalConnectionError(response.status, "login")
                 return await response.json()
@@ -688,7 +719,7 @@ class AlphaESSPortalApi:
                 timeout=aiohttp.ClientTimeout(total=20),
             ) as response:
                 if response.status in (401, 403):
-                    raise AuthenticationError(step)
+                    raise self._reject_authentication(step, response.status)
                 if response.status not in (200, 201, 204):
                     raise PortalConnectionError(response.status, step)
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
@@ -704,7 +735,7 @@ class AlphaESSPortalApi:
                 timeout=aiohttp.ClientTimeout(total=20),
             ) as response:
                 if response.status in (401, 403):
-                    raise AuthenticationError(step)
+                    raise self._reject_authentication(step, response.status)
                 if response.status not in (200, 201, 204):
                     raise PortalConnectionError(response.status, step)
                 if self._settings_written_callback is not None:
@@ -736,7 +767,7 @@ class AlphaESSPortalApi:
                 timeout=aiohttp.ClientTimeout(total=20),
             ) as response:
                 if response.status in (401, 403):
-                    raise AuthenticationError(step)
+                    raise self._reject_authentication(step, response.status)
                 if response.status != 200:
                     raise PortalConnectionError(response.status, step)
                 return await response.json()

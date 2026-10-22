@@ -9,6 +9,7 @@
 DOMAIN = "alphaess_portal_bridge"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
+CONF_AUTHENTICATION_PAUSED = "authentication_paused"
 CONF_SYSTEM_SERIAL = "system_serial"
 CONF_WALLBOX_SERIAL = "wallbox_serial"
 CONF_UPDATE_INTERVAL = "update_interval_seconds"
