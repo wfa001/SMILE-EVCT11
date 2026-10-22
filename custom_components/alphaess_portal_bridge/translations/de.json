@@ -17,6 +17,14 @@
         "data": {
           "wallbox_serial": "Wallbox-Seriennummer"
         }
+      },
+      "reauth_confirm": {
+        "title": "AlphaESS-Zugangsdaten aktualisieren",
+        "description": "Die Anmeldung wurde abgelehnt. Automatische Versuche wurden gestoppt. Warte eine angezeigte Kontosperre ab und gib anschließend deine aktuellen Zugangsdaten ein. Nur das Absenden dieses Formulars startet einen neuen Anmeldeversuch.",
+        "data": {
+          "username": "Benutzername oder E-Mail-Adresse",
+          "password": "Aktuelles Kennwort"
+        }
       }
     },
     "error": {
@@ -24,10 +32,12 @@
       "session_rejected": "Die Anmeldung war erfolgreich, aber das Portal hat die neue Sitzung noch nicht freigegeben.",
       "system_access_denied": "Die Anmeldung war erfolgreich, aber das Portal verweigert noch den Zugriff auf diese Anlage.",
       "cannot_connect": "Das AlphaESS-Portal ist derzeit nicht erreichbar.",
-      "portal_status": "Das AlphaESS-Portal antwortete beim Schritt {step} mit dem Status {status}."
+      "portal_status": "Das AlphaESS-Portal antwortete beim Schritt {step} mit dem Status {status}.",
+      "login_paused": "AlphaESS hat die Anmeldung mit Status 409 oder 429 abgelehnt. Warte eine eventuell angezeigte Sperrfrist ab, bevor du das Formular erneut absendest."
     },
     "abort": {
-      "reconfigure_successful": "Die Wallbox wurde zugeordnet."
+      "reconfigure_successful": "Die Wallbox wurde zugeordnet.",
+      "reauth_successful": "Die Zugangsdaten wurden aktualisiert."
     }
   },
   "options": {

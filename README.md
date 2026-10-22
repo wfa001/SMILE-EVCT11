@@ -166,6 +166,14 @@ Kurze Übergangszustände der Wallbox können zwischen zwei Abfragen liegen und 
 
 Bei einer Neuinstallation die Integration über **Einstellungen → Geräte & Dienste → Integration hinzufügen** einrichten.
 
+## Passwortwechsel und abgelehnte Anmeldung
+
+Wird eine Anmeldung abgelehnt, stoppt die Bridge weitere automatische Anmeldeversuche und fordert über Home Assistant eine erneute Authentifizierung an. Diese Pause bleibt auch beim Neuladen und nach einem Neustart erhalten. Ein Login mit HTTP 409 oder 429 wird vorsichtshalber ebenfalls pausiert; Status 409 allein beweist keine Kontosperre.
+
+Eine von AlphaESS angezeigte Sperrfrist zunächst abwarten. Danach unter **Einstellungen → Geräte & Dienste** beim betroffenen Integrationseintrag die erneute Authentifizierung öffnen und die aktuellen Zugangsdaten absenden. Das Öffnen des Formulars sendet kein Passwort. Nur das Absenden startet einen neuen Versuch. Nach erfolgreicher Prüfung wird derselbe Integrationseintrag aktualisiert; Geräte, Entitäten und Zuordnungen bleiben erhalten. Die Integration muss dafür nicht gelöscht werden.
+
+Normale Verbindungsfehler bleiben wiederholbar. HTTP 409 an anderen Endpunkten, etwa dem G1T-Live-Status, wird weiterhin getrennt behandelt. Bereits laufende HTTP-Anfragen können beim Auftreten des Fehlers noch abschließen.
+
 ## G2T-Portal-Zuordnungen
 
 | Portal-Feld | Bedeutung |
@@ -205,4 +213,4 @@ Zugangsdaten, Tokens und persönliche Daten aus Logs entfernen. Seriennummern f�
 
 G2T wallboxes refresh the read-only portal `real-status` endpoint approximately every **5 seconds**, independently of the normal system/configuration refresh (30 seconds by default). This updates charging power, status, plug/lock state and the live energy fields without repeatedly loading settings and report history. A 3-second shared response cache also avoids duplicate status requests close to normal refreshes. G1T polling stays unchanged.
 
-The five-second interval is based on short read-only portal tests; it is **not** an official AlphaESS rate-limit guarantee. On connection errors the live reader backs off; authentication errors and HTTP 429 use a longer 120-second pause. No live GET is automatically repeated and no charge-control, schedules or Smart Mode logic was changed. AlphaESS has been observed to refresh cloud power values about every ten seconds, so five-second polling primarily lowers Home Assistant's additional detection delay.
+The five-second interval is based on short read-only portal tests; it is **not** an official AlphaESS rate-limit guarantee. On connection errors the live reader backs off; HTTP 429 on live-status reads uses a longer 120-second pause. Authentication failures stop polling and require explicit reauthentication, including after a restart. HTTP 409/429 during login is also paused rather than automatically retried. No charge-control, schedules or Smart Mode logic was changed. AlphaESS has been observed to refresh cloud power values about every ten seconds, so five-second polling primarily lowers Home Assistant's additional detection delay.

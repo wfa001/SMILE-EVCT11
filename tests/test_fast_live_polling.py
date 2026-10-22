@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+from datetime import datetime, timezone
 import time
 from pathlib import Path
 import unittest
@@ -84,6 +85,8 @@ def load_methods():
         "_G2T_LIVE_MAX_BACKOFF_SECONDS": 120,
         "_LOGGER": Logger(),
         "time": time,
+        "datetime": datetime,
+        "timezone": timezone,
     }
     exec(compile(ast.fix_missing_locations(ast.Module(body=[cls], type_ignores=[])),
                  str(SOURCE), "exec"), namespace)
@@ -179,7 +182,11 @@ class LiveRefreshTests(unittest.IsolatedAsyncioTestCase):
         item.start_live_polling()
         await calls[-1].execute()
         self.assertEqual(calls[-1].delay, 120)
-        self.assertEqual(item.notify_count, 0)
+        # Connection diagnostics now notify listeners even without fresh data.
+        self.assertEqual(item.notify_count, 1)
+        self.assertEqual(item._live_last_http_status, 429)
+        self.assertEqual(item._live_failure_count, 1)
+        self.assertNotIn("wallbox_status", item.data)
 
     async def test_temporary_failure_recovers(self):
         item = FakeCoordinator()
