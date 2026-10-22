@@ -5,7 +5,9 @@ Run: python -m unittest discover -s tests
 import ast
 import asyncio
 import json
+import re
 import runpy
+import time
 from types import SimpleNamespace
 from pathlib import Path
 import unittest
@@ -18,7 +20,10 @@ def load_helpers():
         "custom_components/alphaess_portal_bridge/diagnostics.py"
     )
     module = ast.parse(source.read_text(encoding="utf-8"))
-    names = {"_present_fields", "_bool_capability", "_period_schema", "async_get_config_entry_diagnostics"}
+    names = {
+        "_present_fields", "_bool_capability", "_period_schema",
+        "_diagnostic_field_names", "_safe_snapshot", "async_get_config_entry_diagnostics",
+    }
     subset = ast.Module(
         body=[
             node for node in module.body
@@ -26,7 +31,8 @@ def load_helpers():
             or (isinstance(node, ast.Assign) and any(
                 isinstance(target, ast.Name) and target.id in {
                     "_WALLBOX_FIELDS", "_COMMON_SETTINGS", "_SCHEDULE_SETTINGS", "_G2T_SETTINGS",
-                    "_LIVE_FIELDS", "_REPORT_FIELDS"
+                    "_LIVE_FIELDS", "_REPORT_FIELDS", "_DIAGNOSTIC_KEY", "_SAFE_KEY",
+                    "_SENSITIVE_KEY", "_SECRET_KEYS", "_SECRET_VALUE",
                 } for target in node.targets
             ))
         ],
@@ -40,7 +46,7 @@ def load_helpers():
                     return profile, wallbox[profile]
             return None, None
 
-    namespace = {"Any": Any, "HomeAssistant": object, "ConfigEntry": object, "AlphaESSPortalApi": FakePortal, "DOMAIN": "alphaess_portal_bridge", **runpy.run_path(str(source.parent / "schedule.py"))}
+    namespace = {"re": re, "time": time, "Any": Any, "HomeAssistant": object, "ConfigEntry": object, "AlphaESSPortalApi": FakePortal, "DOMAIN": "alphaess_portal_bridge", **runpy.run_path(str(source.parent / "schedule.py"))}
     exec(compile(ast.fix_missing_locations(subset), str(source), "exec"), namespace)
     return namespace
 
@@ -161,6 +167,7 @@ class PrivacyTests(unittest.TestCase):
             _live_last_duration_ms=300,
             _full_last_duration_ms=500,
             _live_last_http_status=429,
+            _advanced_diagnostics_until=0.0,
             last_update_success=True,
         )
         entry = SimpleNamespace(entry_id="fake-entry-id")
@@ -170,6 +177,7 @@ class PrivacyTests(unittest.TestCase):
         for forbidden in (secret, serial, email, "08:07", "09:23", "5.25", "4.5", "private-firmware-serial"):
             self.assertNotIn(forbidden, serialized)
         self.assertEqual(diag["portal_profile"], "g2T")
+        self.assertNotIn("advanced_api_snapshot", diag)
         self.assertEqual(diag["integration"]["live_last_http_status"], 429)
         self.assertEqual(diag["wallbox_schema"]["time_periods"]["count"], 1)
         self.assertIn("chargingAmount", diag["live_data"]["available_fields"])
@@ -220,6 +228,7 @@ class PrivacyTests(unittest.TestCase):
             _live_last_duration_ms=None,
             _full_last_duration_ms=None,
             _live_last_http_status=None,
+            _advanced_diagnostics_until=0.0,
             last_update_success=True,
         )
         entry = SimpleNamespace(entry_id="g1t-test")

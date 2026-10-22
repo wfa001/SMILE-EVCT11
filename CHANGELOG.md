@@ -8,6 +8,7 @@
 - Ergänzt die erneute Authentifizierung in Home Assistant: Zugangsdaten nach Ablauf einer etwaigen AlphaESS-Sperre aktualisieren, ohne die Integration oder ihre Entitäten zu löschen.
 - Serialisiert parallele Sitzungsanfragen, damit wartende Abfragen nach einer Ablehnung nicht erneut dasselbe Passwort senden. Normale Verbindungsfehler und G1T-Live-Status-Konflikte bleiben getrennt behandelt.
 - Ergänzt Regressionstests ohne Cloud-Zugriff. Keine neue Versionsnummer oder Veröffentlichung.
+- Aktualisiert bestehende Testobjekte für Diagnosefelder, Zeitstempel und das bestätigte G1T-Schema mit zwei Zeitfenstern. Die vollständige Testsammlung enthält nun 83 erfolgreiche Tests; nicht unterstützte dritte G1T-Zeitfenster bleiben gegen Lesen und Schreiben abgesichert.
 
 ## 0.5.92 – Beta
 

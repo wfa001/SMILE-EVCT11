@@ -18,7 +18,8 @@ class FakeG1Portal(FakePortal):
         super().__init__()
         box = self.configuration["evCharger"][0]
         values = box.pop("g2T")
-        # Same field layout as G2T: optionally restrict to two periods for negative tests.
+        # G1T supports exactly two periods. Extra fields are only writable
+        # when explicitly returned, so keep them here for compatibility tests.
         values["timePeriods"] = values["timePeriods"][:2]
         box["g1T"] = values
 
@@ -64,20 +65,23 @@ def load_entity_helpers():
 
 
 class G1TCompatibilityTests(unittest.IsolatedAsyncioTestCase):
-    async def test_two_periods_rejected_without_creating_a_third(self):
+    async def test_two_periods_can_be_updated_without_creating_a_third(self):
         portal = FakeG1Portal()
         self.assertEqual(len(portal.settings["timePeriods"]), 2)
-        with self.assertRaises(ValueError):
-            await portal.async_update_time_period(1, start_time="20:17", end_time="22:39")
+        first_period = copy.deepcopy(portal.settings["timePeriods"][0])
+        await portal.async_update_time_period(1, start_time="20:17", end_time="22:39")
         self.assertEqual(len(portal.settings["timePeriods"]), 2)
-        self.assertEqual(portal.patches, [])
+        self.assertEqual(portal.settings["timePeriods"][0], first_period)
+        self.assertEqual(portal.settings["timePeriods"][1]["startTime"], "20:17")
+        self.assertEqual(portal.settings["timePeriods"][1]["endTime"], "22:39")
+        self.assertEqual(len(portal.patches), 1)
+        with self.assertRaises(PortalConnectionError):
+            await portal.async_update_time_period(2, enabled=True)
+        self.assertEqual(len(portal.settings["timePeriods"]), 2)
+        self.assertEqual(len(portal.patches), 1)
 
     async def test_existing_g1t_period_flag_and_mode_can_be_changed(self):
         portal = FakeG1Portal()
-        portal.settings["timePeriods"].append({
-            "isEnable": False, "startTime": "22:00", "endTime": "23:00",
-            "chargeMode": 1, "chargeCurrent": 6,
-        })
         await portal.async_update_time_period(0, enabled=False, charge_mode=4, charge_current=11)
         self.assertFalse(portal.settings["timePeriods"][0]["isEnable"])
         self.assertEqual(portal.settings["timePeriods"][0]["chargeMode"], 4)
@@ -117,10 +121,6 @@ class G1TCompatibilityTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_g1t_strategy_can_use_existing_matching_field(self):
         portal = FakeG1Portal()
-        portal.settings["timePeriods"].append({
-            "isEnable": False, "startTime": "22:00", "endTime": "23:00",
-            "chargeMode": 1, "chargeCurrent": 6,
-        })
         await portal.async_update_wallbox_settings(charge_strategy=1)
         self.assertEqual(portal.settings["chargeStrategy"], 1)
 
@@ -133,17 +133,28 @@ class G1TCompatibilityTests(unittest.IsolatedAsyncioTestCase):
     async def test_period_schema_read_only_helpers(self):
         helpers = load_entity_helpers()
         portal = FakeG1Portal()
-        self.assertEqual(helpers["time_period"](portal, 0), {})
-        portal.settings["timePeriods"].append({
-            "isEnable": False, "startTime": "22:00", "endTime": "23:00",
-            "chargeMode": 1, "chargeCurrent": 6,
-        })
         self.assertEqual(helpers["time_period"](portal, 0)["startTime"], "08:00")
         self.assertEqual(helpers["time_period"](portal, 1)["endTime"], "21:00")
-        self.assertEqual(helpers["time_period"](portal, 2)["startTime"], "22:00")
+        self.assertEqual(helpers["time_period"](portal, 2), {})
         portal.settings["timePeriods"][0].pop("endTime")
         self.assertEqual(helpers["time_period"](portal, 0), {})
         self.assertEqual(helpers["time_period"](portal, 1), {})
+
+    async def test_unexpected_third_period_blocks_reads_and_writes(self):
+        portal = FakeG1Portal()
+        portal.settings["timePeriods"].append({
+            "isEnable": False, "startTime": "22:00", "endTime": "23:00",
+        })
+        before = copy.deepcopy(portal.configuration)
+        helpers = load_entity_helpers()
+        for index in range(3):
+            self.assertEqual(helpers["time_period"](portal, index), {})
+        with self.assertRaises(ValueError):
+            await portal.async_update_time_period(0, enabled=False)
+        with self.assertRaises(ValueError):
+            await portal.async_update_wallbox_settings(charge_strategy=1)
+        self.assertEqual(portal.configuration, before)
+        self.assertEqual(portal.patches, [])
 
     async def test_legacy_mode_not_present_in_selectable_modes(self):
         source = ENTITY.read_text(encoding="utf-8")

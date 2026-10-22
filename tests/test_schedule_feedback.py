@@ -64,6 +64,10 @@ def make_coordinator(strategy=1, enabled=True, generation="g2T"):
             {"isEnable": True, "startTime": "00:15", "endTime": "04:45", "chargeMode": 4, "chargeCurrent": 16},
         ],
     }
+    if generation == "g1T":
+        # A reported global strategy is interpretable only with the confirmed
+        # two-period G1T schema, not with a copied three-period G2T document.
+        settings["timePeriods"] = settings["timePeriods"][:2]
     data = {
         "wallbox_serial": "TEST",
         "configuration": {"evCharger": [{"sn": "TEST", generation: settings}]},
@@ -85,6 +89,9 @@ def get_attributes(filename, classname, self_object):
     method.decorator_list = []
     module = ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[]))
     namespace = dict(NS)
+    if hasattr(self_object, "coordinator"):
+        # Supply the base entity's property using its actual settings helper.
+        self_object.settings_generation = NS["settings_object"](self_object.coordinator)[0]
     exec(compile(module, str(source_file), "exec"), namespace)
     return namespace["extra_state_attributes"](self_object)
 
