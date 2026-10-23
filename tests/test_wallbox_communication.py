@@ -99,13 +99,18 @@ class StatusTests(unittest.TestCase):
                 self.assertEqual(sensor.native_value, MESSAGE)
                 self.assertIn("Cloud hat geantwortet", sensor.extra_state_attributes["Hinweis"])
 
+    def test_g1t_uses_shared_portal_missing_status_rule(self):
+        for payload in ({}, {"status": None}, {"status": ""}, {"gunIsLock": False, "chargingAmount": 11.6}):
+            with self.subTest(payload=payload):
+                self.assertEqual(status_sensor(coordinator_with(payload, generation="g1T")).native_value, MESSAGE)
+
     def test_power_zero_alone_does_not_mean_communication_failure(self):
         sensor = status_sensor(coordinator_with({"status": "NotInsertedGun", "power": 0.0}))
         self.assertEqual(sensor.native_value, "Nicht angeschlossen")
         self.assertNotIn("Hinweis", sensor.extra_state_attributes)
 
-    def test_fallback_and_unconfirmed_g1t_do_not_infer_rs485_failure(self):
-        for generation, source in (("g2T", "system"), ("g1T", "real_status"), ("g2T", None)):
+    def test_system_fallback_does_not_infer_rs485_failure(self):
+        for generation, source in (("g2T", "system"), ("g1T", "system"), ("g2T", None)):
             item = coordinator_with({}, generation=generation, source=source)
             self.assertIsNone(status_sensor(item).native_value)
 
@@ -171,6 +176,29 @@ class PollingTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(item._live_status_supported)
         await calls[-1].execute()
         self.assertEqual(status_sensor(item).native_value, "Bereit")
+
+    async def test_g1t_statusless_replies_and_reconnection_keep_polling(self):
+        item = coordinator_with({"status": "Charging", "power": 3200}, generation="g1T")
+        item.api.statuses = [{"gunIsLock": False, "chargingAmount": 11.6}, {}, {"status": "NotInsertedGun", "power": 0.0}]
+        for _ in range(2):
+            await item._async_live_refresh(None)
+            self.assertEqual(status_sensor(item).native_value, MESSAGE)
+            self.assertTrue(item._live_status_supported)
+            self.assertEqual(calls[-1].delay, 5)
+            self.assertIsNone(NS["AlphaESSWallboxPowerSensor"](item, None).native_value)
+        await calls[-1].execute()
+        self.assertEqual(status_sensor(item).native_value, "Nicht angeschlossen")
+
+    async def test_g1t_unsupported_endpoint_does_not_publish_communication_failure(self):
+        for code in (404, 409):
+            calls.clear()
+            item = coordinator_with({"status": "Charging"}, generation="g1T", source="system")
+            item.api.statuses = [PortalConnectionError(code)]
+            await item._async_live_refresh(None)
+            self.assertFalse(item._live_status_supported)
+            self.assertEqual(status_sensor(item).native_value, "Lädt")
+            self.assertEqual(item.data["wallbox_status_source"], "system")
+            self.assertEqual(calls, [])
 
     async def test_cloud_failure_does_not_fabricate_a_missing_status_response(self):
         for error in (PortalConnectionError(503), PortalConnectionError(None)):

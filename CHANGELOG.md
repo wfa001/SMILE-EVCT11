@@ -4,10 +4,10 @@
 
 ### Wallbox-Kommunikation und Fehlerstatus
 
-- Zeigt bei G2T eine Kommunikationsmeldung an, wenn eine erfolgreich empfangene `real-status`-Antwort kein befülltes `status`-Feld enthält. Cloud-Zugriffsfehler bleiben davon getrennt.
-- Verarbeitet G2T-Antworten mit ausschließlich Energiezählern/Verriegelung weiter und setzt das Live-Polling fort. Wiederverbindungen werden automatisch erkannt; nicht mehr gemeldete Leistungswerte bleiben unbekannt.
+- Zeigt bei G1T und G2T entsprechend der gemeinsamen Portal-Logik eine Kommunikationsmeldung an, wenn eine erfolgreich empfangene `real-status`-Antwort kein befülltes `status`-Feld enthält. Cloud-Zugriffsfehler bleiben davon getrennt.
+- Verarbeitet G1T-/G2T-Antworten mit ausschließlich Energiezählern/Verriegelung weiter und setzt das Live-Polling fort. Wiederverbindungen werden automatisch erkannt; nicht mehr gemeldete Leistungswerte bleiben unbekannt.
 - Ergänzt verständliche Statusnamen für `Disconnected`, `Error`, `Fault` und `Upgrading`. Diese Zustände bestätigen kein angeschlossenes Fahrzeug.
-- Dokumentiert den RS485-Versuch und die Grenzen der Fehlererkennung. Keine erfundenen Detailfehlercodes oder zusätzlichen API-Aufrufe. 14 neue Regressionstests, insgesamt 97 Tests erfolgreich.
+- Dokumentiert den RS485-Versuch und die Grenzen der Fehlererkennung. Keine erfundenen Detailfehlercodes oder zusätzlichen API-Aufrufe. 17 neue Regressionstests, insgesamt 100 Tests erfolgreich. Der G1T-Praxistest steht aus; HTTP 404/409 des G1T-Live-Endpunkts behalten den bisherigen Fallback.
 
 ### Anmeldung nach Passwortwechsel
 

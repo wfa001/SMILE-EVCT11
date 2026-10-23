@@ -169,13 +169,14 @@ class LiveRefreshTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(item.notify_count, 0)
 
-    async def test_g1t_empty_payload_disables_fast_poll(self):
+    async def test_g1t_statusless_object_keeps_fast_poll(self):
         item = FakeCoordinator(generation="g1T")
         item.api.statuses = [{"some_unknown_field": "value"}]
         item.start_live_polling()
         await calls[-1].execute()
-        self.assertFalse(item._live_status_supported)
-        self.assertEqual(len(calls), 1)
+        self.assertTrue(item._live_status_supported)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(item.data["wallbox_status"], {"some_unknown_field": "value"})
 
     async def test_429_backs_off(self):
         item = FakeCoordinator()

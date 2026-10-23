@@ -36,9 +36,13 @@ Die zugehörige Statustabelle aus `account-ahqHus31.js` kennt:
 
 ## Umsetzung und Grenzen
 
-Nur erfolgreiche G2T-Live-Antworten mit fehlendem, `null` oder leerem Status
-erzeugen den Kommunikationshinweis. G1T und System-Fallbacks bleiben getrennt.
-Nicht-Objekt-Antworten auf dem G2T-Live-Pfad sind Lesefehler mit Backoff.
+Erfolgreiche G1T-/G2T-Live-Antworten mit fehlendem, `null` oder leerem Status
+erzeugen den Kommunikationshinweis. Der Webseiten-Code prüft dies unabhängig
+vom `isG1T`-Parameter. Die Übernahme für G1T beruht auf diesem gemeinsamen
+Codepfad; ein G1T-Hardwareversuch steht aus. System-Fallbacks und fehlgeschlagene
+HTTP-Aufrufe erzeugen den Hinweis nicht. HTTP 404/409 beim G1T-Live-Endpunkt
+behalten den bestehenden Rückfall auf den regulären Abruf. Nicht-Objekt-Antworten
+sind Lesefehler mit Backoff.
 
 Eine Zähler-/Verriegelungsantwort darf das Polling nicht dauerhaft deaktivieren.
 Die jeweils neue Live-Antwort ersetzt die alte vollständig, damit z. B. eine
