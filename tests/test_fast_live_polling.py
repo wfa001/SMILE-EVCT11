@@ -68,7 +68,7 @@ def load_methods():
         and node.name == "AlphaESSWallboxCoordinator"
     )
     methods = {"start_live_polling", "_schedule_live_refresh",
-               "_async_live_refresh", "stop_live_polling"}
+               "_async_live_refresh", "stop_live_polling", "_async_update_data"}
     extracted = [node for node in original.body
                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                  and node.name in methods]
@@ -80,6 +80,7 @@ def load_methods():
         "AlphaESSPortalApi": AlphaESSPortalApi,
         "AuthenticationError": AuthenticationError,
         "PortalConnectionError": PortalConnectionError,
+        "UpdateFailed": RuntimeError,
         "async_call_later": async_call_later,
         "_G2T_LIVE_INTERVAL_SECONDS": 5,
         "_G2T_LIVE_MAX_BACKOFF_SECONDS": 120,

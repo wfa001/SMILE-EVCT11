@@ -23,6 +23,7 @@ from .entity import (
     STATUS_NAMES,
     AlphaESSWallboxEntity,
     settings_object,
+    wallbox_communication_missing,
     wallbox_object,
 )
 
@@ -127,6 +128,8 @@ class AlphaESSWallboxStatusSensor(AlphaESSWallboxEntity, SensorEntity):
 
     @property
     def native_value(self) -> str | int | None:
+        if wallbox_communication_missing(self.coordinator):
+            return "Keine Kommunikation zwischen Wallbox und Energiespeichersystem"
         value = _first_value(self._status, "status", "chargingStatus", "state")
         return STATUS_NAMES.get(value, value) if isinstance(value, str) else value
 
@@ -140,6 +143,12 @@ class AlphaESSWallboxStatusSensor(AlphaESSWallboxEntity, SensorEntity):
         source = data.get("wallbox_status_source")
         if source:
             attrs["data_source"] = source
+        if wallbox_communication_missing(self.coordinator):
+            attrs["Hinweis"] = (
+                "Die Cloud hat geantwortet, liefert aber keinen aktuellen Wallboxstatus. "
+                "Dies entspricht der Kommunikationsmeldung im AlphaESS-Webportal; "
+                "vorhandene Energiezähler bestätigen keine aktive Verbindung."
+            )
         allowed_keys = {
             "status", "chargingStatus", "state", "power", "chargingPower",
             "currentPower", "realPower", "mode", "chargeMode", "chargingMode",
@@ -196,7 +205,9 @@ class AlphaESSYesNoSensor(AlphaESSWallboxEntity, SensorEntity):
             return None
         if self._kind == "vehicle_connected":
             status = status_data.get("status")
-            if not isinstance(status, str):
+            if not isinstance(status, str) or not status or status in {
+                "Disconnected", "Error", "Fault", "Upgrading",
+            }:
                 return None
             return "Nein" if status == "NotInsertedGun" else "Ja"
         value = status_data.get("gunIsLock")

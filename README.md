@@ -174,6 +174,25 @@ Eine von AlphaESS angezeigte Sperrfrist zunächst abwarten. Danach unter **Einst
 
 Normale Verbindungsfehler bleiben wiederholbar. HTTP 409 an anderen Endpunkten, etwa dem G1T-Live-Status, wird weiterhin getrennt behandelt. Bereits laufende HTTP-Anfragen können beim Auftreten des Fehlers noch abschließen.
 
+## Wallbox-Kommunikation und Fehleranzeigen
+
+Der bestehende **Status**-Sensor zeigt für G2T **„Keine Kommunikation zwischen Wallbox und Energiespeichersystem“**, wenn die Cloud eine `real-status`-Antwort als Objekt liefert, in der `status` fehlt, `null` oder leer ist. Diese Anzeige entspricht der Logik des AlphaESS-Webportals und wurde beim Trennen/Wiederverbinden der RS485-Verbindung beobachtet. Sie beschreibt die fehlende Statusmeldung, keine Diagnose der konkreten elektrischen Ursache.
+
+Die Cloud kann dabei weiterhin Energiezähler und den Verriegelungswert liefern. Das bestätigt keine aktive Kommunikation zur Wallbox. Fehlende Leistungswerte werden als unbekannt behandelt. Die Live-Abfrage läuft weiter und zeigt wieder den normalen Status, sobald dieser zurückkommt.
+
+Der Diagnose-Sensor **Wallbox Bridge Verbindung** beurteilt separat den Zugriff auf die Cloud-API. Ein HTTP-/Netzwerkfehler erzeugt keine neue RS485-Störungsmeldung; bei fehlgeschlagenen Live-Abfragen können die letzten erfolgreich empfangenen Werte bis zur nächsten Aktualisierung stehen bleiben. Schlägt auch die reguläre Coordinator-Aktualisierung fehl, greift die bestehende Nichtverfügbarkeit der Entitäten.
+
+| API-Status | Anzeige |
+|---|---|
+| `Disconnected` | Verbindung getrennt |
+| `Error` | Allgemeiner Fehler |
+| `Fault` | Störung |
+| `Upgrading` | Softwareaktualisierung läuft |
+
+Diese allgemeinen Statuswerte enthalten keine genaue Fehlerursache. Insbesondere wird `Disconnected` nicht pauschal mit einem RS485-Ausfall gleichgesetzt. Detaillierte Fehler wie Übertemperatur sind ohne passende API-Antwort weiterhin nicht zugeordnet. Die neue Erkennung eines fehlenden Status wird nicht auf unbestätigte G1T-Antworten oder System-Fallbackdaten übertragen.
+
+Versuch und Quellen: [RS485-Kommunikationstest vom 23.10.2026](docs/wallbox_communication_2026-10-23.md).
+
 ## G2T-Portal-Zuordnungen
 
 | Portal-Feld | Bedeutung |

@@ -2,6 +2,13 @@
 
 ## Unveröffentlicht
 
+### Wallbox-Kommunikation und Fehlerstatus
+
+- Zeigt bei G2T eine Kommunikationsmeldung an, wenn eine erfolgreich empfangene `real-status`-Antwort kein befülltes `status`-Feld enthält. Cloud-Zugriffsfehler bleiben davon getrennt.
+- Verarbeitet G2T-Antworten mit ausschließlich Energiezählern/Verriegelung weiter und setzt das Live-Polling fort. Wiederverbindungen werden automatisch erkannt; nicht mehr gemeldete Leistungswerte bleiben unbekannt.
+- Ergänzt verständliche Statusnamen für `Disconnected`, `Error`, `Fault` und `Upgrading`. Diese Zustände bestätigen kein angeschlossenes Fahrzeug.
+- Dokumentiert den RS485-Versuch und die Grenzen der Fehlererkennung. Keine erfundenen Detailfehlercodes oder zusätzlichen API-Aufrufe. 14 neue Regressionstests, insgesamt 97 Tests erfolgreich.
+
 ### Anmeldung nach Passwortwechsel
 
 - Stoppt automatische Anmeldeversuche bei abgelehnten Zugangsdaten und bei HTTP 409/429 während der Anmeldung. Die Pause bleibt nach Neuladen und Neustart erhalten.
