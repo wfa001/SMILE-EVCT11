@@ -2,6 +2,12 @@
 
 ## Unveröffentlicht
 
+### „Heute geladen“ ohne Energiefeld nach Tageswechsel
+
+- Ergänzt wie im G2T-Portal 0 kWh, wenn eine erfolgreiche Live-Antwort einen normalen Status enthält, aber `chargingAmount` auslässt. Nach Mitternacht ohne neue Ladung am 24.10.2026 beobachtet.
+- Keine Nullergänzung bei Kommunikations-/Lesefehlern, Fehlerzuständen, System-Fallbacks, explizitem `null`, ungültigen Werten oder unbestätigtem G1T-Schema. „Aktueller / letzter Ladeabschnitt“ bleibt getrennt.
+- Sechs zusätzliche Regressionstests; insgesamt 106 Tests. Mehrere Ladevorgänge am selben Tag und der genaue Resetzeitpunkt bleiben offen.
+
 ### Wallbox-Kommunikation und Fehlerstatus
 
 - Zeigt bei G1T und G2T entsprechend der gemeinsamen Portal-Logik eine Kommunikationsmeldung an, wenn eine erfolgreich empfangene `real-status`-Antwort kein befülltes `status`-Feld enthält. Cloud-Zugriffsfehler bleiben davon getrennt.

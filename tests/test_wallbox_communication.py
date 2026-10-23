@@ -137,6 +137,45 @@ class StatusTests(unittest.TestCase):
             self.assertEqual(sensor.native_value, expected)
 
 
+class DailyEnergyTests(unittest.TestCase):
+    def energy(self, item, key="chargingAmount"):
+        return NS["AlphaESSWallboxEnergySensor"](item, None, "Energy", key, key).native_value
+
+    def test_midnight_reply_without_energy_shows_zero(self):
+        item = coordinator_with({"status": "NotInsertedGun", "gunIsLock": False, "power": 0.0})
+        self.assertEqual(self.energy(item), 0.0)
+        self.assertIsNone(self.energy(item, "lastChargingAmount"))
+
+    def test_reported_energy_is_preserved_including_zero(self):
+        for value in (0, 11.6):
+            item = coordinator_with({"status": "NotInsertedGun", "chargingAmount": value})
+            self.assertEqual(self.energy(item), float(value))
+
+    def test_communication_failure_does_not_synthesize_zero(self):
+        for state in (None, "", "Disconnected", "Error", "Fault", "Upgrading", "FutureState"):
+            with self.subTest(state=state):
+                self.assertIsNone(self.energy(coordinator_with({"status": state})))
+        self.assertIsNone(self.energy(coordinator_with({})))
+
+    def test_fallback_and_unconfirmed_g1t_do_not_synthesize_zero(self):
+        for generation, source in (("g2T", "system"), ("g1T", "real_status"), ("g2T", None)):
+            self.assertIsNone(self.energy(coordinator_with({"status": "NotInsertedGun"}, generation=generation, source=source)))
+
+    def test_null_and_invalid_energy_do_not_become_zero(self):
+        for value in (None, "", "invalid", [], {}):
+            self.assertIsNone(self.energy(coordinator_with({"status": "NotInsertedGun", "chargingAmount": value})))
+        for payload in (None, [], "invalid"):
+            self.assertIsNone(self.energy(coordinator_with(payload)))
+
+    def test_read_failure_does_not_reuse_old_reply_to_synthesize_zero(self):
+        for attribute, value in (("_live_refresh_errors", 1), ("_full_consecutive_errors", 1), ("last_update_success", False)):
+            item = coordinator_with({"status": "NotInsertedGun"})
+            setattr(item, attribute, value)
+            self.assertIsNone(self.energy(item))
+            setattr(item, attribute, True if attribute == "last_update_success" else 0)
+            self.assertEqual(self.energy(item), 0.0)
+
+
 class PollingTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         calls.clear()

@@ -193,6 +193,17 @@ Diese allgemeinen Statuswerte enthalten keine genaue Fehlerursache. Insbesondere
 
 Versuch und Quellen: [RS485-Kommunikationstest vom 23.10.2026](docs/wallbox_communication_2026-10-23.md).
 
+### „Heute geladen“ nach dem Tageswechsel
+
+Bei G2T wurde beobachtet: Nach Mitternacht ohne neue Ladung zeigt das Portal
+0 kWh; die erfolgreiche `real-status`-Antwort enthält einen normalen Status,
+aber kein `chargingAmount`. In diesem Fall zeigt die Bridge ebenfalls 0 kWh.
+Bei fehlendem Status, Fehlerzuständen, erkannten Abfragefehlern, System-Fallbacks,
+explizitem `null` oder ungültigen Werten wird keine 0 ergänzt. Für G1T fehlt
+noch ein entsprechender Nachweis. „Aktueller / letzter Ladeabschnitt“ erhält
+keinen Null-Ersatzwert. Die Addition mehrerer Ladungen am selben Tag bleibt
+noch zu prüfen; es gibt keine lokale Rücksetzung um Mitternacht.
+
 ## G2T-Portal-Zuordnungen
 
 | Portal-Feld | Bedeutung |

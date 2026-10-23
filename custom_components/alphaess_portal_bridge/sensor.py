@@ -233,14 +233,36 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         super().__init__(coordinator, entry, unique_key)
         self._attr_name = name
         self._key = key
-        # Observations suggest a daily total with a midnight reset; confirm on hardware.
+        # Portal zero after midnight observed; aggregation across sessions still open.
         if key == "chargingAmount":
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
 
     @property
     def native_value(self) -> float | None:
-        status = (self.coordinator.data or {}).get("wallbox_status") or {}
-        value = status.get(self._key) if isinstance(status, dict) else None
+        data = self.coordinator.data or {}
+        status = data.get("wallbox_status")
+        if not isinstance(status, dict):
+            return None
+        # The G2T portal shows zero after midnight when a successful live reply
+        # has a normal status but omits chargingAmount. Do not generalise this
+        # to null/invalid fields, lastChargingAmount, G1T or failed reads.
+        if self._key == "chargingAmount" and self._key not in status:
+            generation, _settings = settings_object(self.coordinator)
+            normal_states = {
+                "NotInsertedGun", "PendingStart", "Charging", "ChargingStopped",
+                "CharingStopped", "InsufficientPower", "WaitingForChargingPile",
+            }
+            if (
+                generation == "g2T"
+                and data.get("wallbox_status_source") == "real_status"
+                and status.get("status") in normal_states
+                and getattr(self.coordinator, "last_update_success", True)
+                and not getattr(self.coordinator, "_live_refresh_errors", 0)
+                and not getattr(self.coordinator, "_full_consecutive_errors", 0)
+            ):
+                return 0.0
+            return None
+        value = status.get(self._key)
         try:
             return float(value) if value is not None else None
         except (TypeError, ValueError):
@@ -252,8 +274,9 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
             return {
                 "Quelle": "Portal real-status: chargingAmount",
                 "Hinweis": (
-                    "Wahrscheinlicher Tageszähler laut wiederholtem Vergleich mit dem Portal. "
-                    "Fehlende Werte werden als unbekannt behandelt; der Zähler kann um Mitternacht zurückgesetzt werden."
+                    "Portal-Anzeige nach Tageswechsel mit 0 bestätigt. Bei erfolgreicher G2T-Live-Antwort "
+                    "mit normalem Status und fehlendem chargingAmount wird 0 angezeigt. Bei Lesefehlern "
+                    "oder fehlendem Status wird keine 0 ergänzt. Mehrere Ladungen am selben Tag sind noch zu prüfen."
                 ),
             }
         return {

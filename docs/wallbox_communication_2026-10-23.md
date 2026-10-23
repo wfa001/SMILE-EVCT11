@@ -46,7 +46,7 @@ sind Lesefehler mit Backoff.
 
 Eine Zähler-/Verriegelungsantwort darf das Polling nicht dauerhaft deaktivieren.
 Die jeweils neue Live-Antwort ersetzt die alte vollständig, damit z. B. eine
-alte Ladeleistung nicht stehen bleibt. Nicht gemeldete Werte werden nicht als
+alte Ladeleistung nicht stehen bleibt. Bei fehlendem Status werden nicht gemeldete Werte nicht als
 0 rekonstruiert. Vorhandene, tatsächlich zurückgelieferte Energiezähler bleiben
 sichtbar. Bei Transportfehlern werden keine fehlenden Statusfelder erfunden;
 die API-Verbindungsdiagnose meldet den Lese-/Cloud-Fehler getrennt.
@@ -54,3 +54,33 @@ die API-Verbindungsdiagnose meldet den Lese-/Cloud-Fehler getrennt.
 Keine zusätzlichen Abrufe, keine Änderungen an Ladestrategien oder
 START/STOP-Freigaben. Sensor-Unique-IDs bleiben erhalten. Die Auswertung des
 Versuchs ist bestätigt; der Praxistest der geänderten HA-Integration steht aus.
+
+
+## Tageswechsel am 24.10.2026
+
+Vor Mitternacht meldete die G2T-Wallbox `chargingAmount: 11.6` und
+`lastChargingAmount: 11.6`. Die Webseite zeigte „Heutige Ladung 11,6 kWh“.
+Die Integration des vom Betreiber exportierten Shelly-Leistungsverlaufs ergab
+für den 23.10. näherungsweise 11,65 kWh und stützt diesen Wert.
+
+Nach Mitternacht war laut Betreiber noch keine neue Ladung erfolgt. Die App
+zeigte um 00:22 Uhr „In dieser Sitzung geladen 0 kWh“, die anschließend
+geprüfte Webseite „Heutige Ladung 0 kWh“. Die neue Live-Antwort enthielt nur:
+
+```json
+{"status": "NotInsertedGun", "gunIsLock": false, "power": 0.0}
+```
+
+Beide Energiefelder fehlten. Deshalb ergänzt der Sensor „Heute geladen“ bei
+einer erfolgreichen G2T-Live-Antwort mit normalem Status und ausgelassenem
+`chargingAmount` eine 0. Explizites `null`, ungültige Werte, System-Fallbacks,
+G1T ohne entsprechenden Nachweis, Fehlerzustände und fehlender Status lösen
+keine Nullergänzung aus. Nach einem erkannten Lese-/Authentifizierungsfehler
+wird auch aus einer alten Antwort keine 0 ergänzt. Bereits ausdrücklich
+empfangene Zahlen bleiben wie bisher erhalten. `lastChargingAmount` wird
+niemals auf diese Weise ergänzt.
+
+Der genaue Resetzeitpunkt und die Addition mehrerer Ladevorgänge an einem
+Tag sind noch nicht bestätigt. Die abweichende Beschriftung der App beweist
+keine identische Semantik von Sitzungs- und Tagesmenge. Keine lokale
+Mitternachtsautomatik, keine neuen API-Aufrufe oder Entitäten.
