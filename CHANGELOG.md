@@ -8,6 +8,19 @@
 - Verwendet das tatsächlich vom Portal gemeldete Modell statt der festen Angabe SMILE-EVCT11. Software- und Hardwareversion ergänzen die Geräteinformationen, sofern vorhanden; ohne Modellangabe wird neutral AlphaESS Wallbox verwendet.
 - Keine Nummern oder Änderungen an Geräte-/Entity-Unique-IDs. Innerhalb der Standardbereiche bleibt die HA-Sortierung alphabetisch. Vier zusätzliche Tests für G1T-/G2T-Metadaten, fehlende Angaben und stabile Identität.
 
+### „Heute geladen“ ohne Energiefeld nach Tageswechsel
+
+- Ergänzt wie im G2T-Portal 0 kWh, wenn eine erfolgreiche Live-Antwort einen normalen Status enthält, aber `chargingAmount` auslässt. Nach Mitternacht ohne neue Ladung am 24.10.2026 beobachtet.
+- Keine Nullergänzung bei Kommunikations-/Lesefehlern, Fehlerzuständen, System-Fallbacks, explizitem `null`, ungültigen Werten oder unbestätigtem G1T-Schema. „Aktueller / letzter Ladeabschnitt“ bleibt getrennt.
+- Sechs zusätzliche Regressionstests; insgesamt 106 Tests. Mehrere Ladevorgänge am selben Tag und der genaue Resetzeitpunkt bleiben offen.
+
+### Wallbox-Kommunikation und Fehlerstatus
+
+- Zeigt bei G1T und G2T entsprechend der gemeinsamen Portal-Logik eine Kommunikationsmeldung an, wenn eine erfolgreich empfangene `real-status`-Antwort kein befülltes `status`-Feld enthält. Cloud-Zugriffsfehler bleiben davon getrennt.
+- Verarbeitet G1T-/G2T-Antworten mit ausschließlich Energiezählern/Verriegelung weiter und setzt das Live-Polling fort. Wiederverbindungen werden automatisch erkannt; nicht mehr gemeldete Leistungswerte bleiben unbekannt.
+- Ergänzt verständliche Statusnamen für `Disconnected`, `Error`, `Fault` und `Upgrading`. Diese Zustände bestätigen kein angeschlossenes Fahrzeug.
+- Dokumentiert den RS485-Versuch und die Grenzen der Fehlererkennung. Keine erfundenen Detailfehlercodes oder zusätzlichen API-Aufrufe. 17 neue Regressionstests, insgesamt 100 Tests erfolgreich. Der G1T-Praxistest steht aus; HTTP 404/409 des G1T-Live-Endpunkts behalten den bisherigen Fallback.
+
 ### Anmeldung nach Passwortwechsel
 
 - Stoppt automatische Anmeldeversuche bei abgelehnten Zugangsdaten und bei HTTP 409/429 während der Anmeldung. Die Pause bleibt nach Neuladen und Neustart erhalten.

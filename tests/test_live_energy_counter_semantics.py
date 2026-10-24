@@ -25,20 +25,12 @@ class LiveEnergyCounterTests(unittest.TestCase):
         self.assertIn('if key == "chargingAmount":', source)
         self.assertIn("self._attr_state_class = SensorStateClass.TOTAL_INCREASING", source)
 
-    def test_missing_values_are_not_fabricated(self):
-        source = SOURCE.read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        klass = next(
-            node for node in tree.body
-            if isinstance(node, ast.ClassDef) and node.name == "AlphaESSWallboxEnergySensor"
-        )
-        native = next(
-            node for node in klass.body
-            if isinstance(node, ast.FunctionDef) and node.name == "native_value"
-        )
-        segment = ast.get_source_segment(source, native)
-        self.assertIn("else None", segment)
-        self.assertNotIn("return 0", segment)
+    def test_missing_values_without_a_valid_live_reply_stay_unknown(self):
+        from test_wallbox_communication import NS, coordinator_with
+        for payload in ({}, {"status": "Fault"}, {"status": None}):
+            coordinator = coordinator_with(payload)
+            sensor = NS["AlphaESSWallboxEnergySensor"](coordinator, None, "Heute geladen", "chargingAmount", "today_energy")
+            self.assertIsNone(sensor.native_value)
 
     def test_energy_sensor_has_no_value_reconstruction_or_extra_api_calls(self):
         source = SOURCE.read_text(encoding="utf-8")
@@ -67,6 +59,7 @@ class LiveEnergyCounterTests(unittest.TestCase):
 
         namespace = {
             "AlphaESSWallboxEntity": FakeBase,
+            "settings_object": lambda coordinator: (None, {}),
             "SensorEntity": type("SensorEntity", (), {}),
             "AlphaESSWallboxCoordinator": object,
             "ConfigEntry": object,

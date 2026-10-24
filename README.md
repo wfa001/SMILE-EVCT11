@@ -197,6 +197,36 @@ Eine von AlphaESS angezeigte Sperrfrist zunächst abwarten. Danach unter **Einst
 
 Normale Verbindungsfehler bleiben wiederholbar. HTTP 409 an anderen Endpunkten, etwa dem G1T-Live-Status, wird weiterhin getrennt behandelt. Bereits laufende HTTP-Anfragen können beim Auftreten des Fehlers noch abschließen.
 
+## Wallbox-Kommunikation und Fehleranzeigen
+
+Der bestehende **Status**-Sensor zeigt für G1T und G2T **„Keine Kommunikation zwischen Wallbox und Energiespeichersystem“**, wenn die Cloud eine `real-status`-Antwort als Objekt liefert, in der `status` fehlt, `null` oder leer ist. Diese Anzeige entspricht der gemeinsamen G1T-/G2T-Logik des AlphaESS-Webportals. Praktisch wurde sie beim Trennen/Wiederverbinden der RS485-Verbindung an G2T beobachtet; der entsprechende G1T-Praxistest steht aus. Sie beschreibt die fehlende Statusmeldung, keine Diagnose der konkreten elektrischen Ursache.
+
+Die Cloud kann dabei weiterhin Energiezähler und den Verriegelungswert liefern. Das bestätigt keine aktive Kommunikation zur Wallbox. Fehlende Leistungswerte werden als unbekannt behandelt. Die Live-Abfrage läuft weiter und zeigt wieder den normalen Status, sobald dieser zurückkommt.
+
+Der Diagnose-Sensor **Wallbox Bridge Verbindung** beurteilt separat den Zugriff auf die Cloud-API. Ein HTTP-/Netzwerkfehler erzeugt keine neue RS485-Störungsmeldung; bei fehlgeschlagenen Live-Abfragen können die letzten erfolgreich empfangenen Werte bis zur nächsten Aktualisierung stehen bleiben. Schlägt auch die reguläre Coordinator-Aktualisierung fehl, greift die bestehende Nichtverfügbarkeit der Entitäten.
+
+| API-Status | Anzeige |
+|---|---|
+| `Disconnected` | Verbindung getrennt |
+| `Error` | Allgemeiner Fehler |
+| `Fault` | Störung |
+| `Upgrading` | Softwareaktualisierung läuft |
+
+Diese allgemeinen Statuswerte enthalten keine genaue Fehlerursache. Insbesondere wird `Disconnected` nicht pauschal mit einem RS485-Ausfall gleichgesetzt. Detaillierte Fehler wie Übertemperatur sind ohne passende API-Antwort weiterhin nicht zugeordnet. System-Fallbackdaten und fehlgeschlagene HTTP-Aufrufe lösen die neue Kommunikationsmeldung nicht aus. Meldet der G1T-Live-Endpunkt HTTP 404/409, bleibt der bisherige Rückfall auf den regulären Abruf erhalten.
+
+Versuch und Quellen: [RS485-Kommunikationstest vom 23.10.2026](docs/wallbox_communication_2026-10-23.md).
+
+### „Heute geladen“ nach dem Tageswechsel
+
+Bei G2T wurde beobachtet: Nach Mitternacht ohne neue Ladung zeigt das Portal
+0 kWh; die erfolgreiche `real-status`-Antwort enthält einen normalen Status,
+aber kein `chargingAmount`. In diesem Fall zeigt die Bridge ebenfalls 0 kWh.
+Bei fehlendem Status, Fehlerzuständen, erkannten Abfragefehlern, System-Fallbacks,
+explizitem `null` oder ungültigen Werten wird keine 0 ergänzt. Für G1T fehlt
+noch ein entsprechender Nachweis. „Aktueller / letzter Ladeabschnitt“ erhält
+keinen Null-Ersatzwert. Die Addition mehrerer Ladungen am selben Tag bleibt
+noch zu prüfen; es gibt keine lokale Rücksetzung um Mitternacht.
+
 ## G2T-Portal-Zuordnungen
 
 | Portal-Feld | Bedeutung |

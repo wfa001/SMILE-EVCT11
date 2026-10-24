@@ -44,6 +44,10 @@ STATUS_NAMES = {
     "CharingStopped": "Laden gestoppt",
     "InsufficientPower": "Unzureichende Leistung",
     "WaitingForChargingPile": "Warten auf Antwort des E-Autos",
+    "Disconnected": "Verbindung getrennt",
+    "Error": "Allgemeiner Fehler",
+    "Fault": "Störung",
+    "Upgrading": "Softwareaktualisierung läuft",
 }
 
 
@@ -61,6 +65,24 @@ def settings_object(coordinator: AlphaESSWallboxCoordinator) -> tuple[str | None
     if isinstance(wallbox.get("g1T"), dict):
         return "g1T", wallbox["g1T"]
     return None, {}
+
+
+def wallbox_communication_missing(coordinator: AlphaESSWallboxCoordinator) -> bool:
+    """Match the portal's shared G1T/G2T missing-status indication.
+
+    A real_status source denotes a successfully received live response. Never
+    infer this from a failed request, an unsupported endpoint, system fallback
+    or power=0. The portal applies the same display rule to both generations.
+    """
+    data = coordinator.data or {}
+    status = data.get("wallbox_status")
+    generation, _settings = settings_object(coordinator)
+    return (
+        generation in ("g1T", "g2T")
+        and data.get("wallbox_status_source") == "real_status"
+        and isinstance(status, dict)
+        and status.get("status") in (None, "")
+    )
 
 
 def time_period(coordinator: AlphaESSWallboxCoordinator, index: int) -> dict[str, Any]:
