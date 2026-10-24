@@ -123,7 +123,7 @@ class AlphaESSSmartModeSwitch(AlphaESSWallboxEntity, SwitchEntity):
     """Enable AlphaESS automatic 3p-to-1p optimization on G2T."""
 
     _attr_name = "Smart Mode"
-    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_category = None
 
     def __init__(self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "smart_mode")
@@ -210,3 +210,4 @@ class AlphaESSTimePeriodSwitch(AlphaESSWallboxEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self._set(False)
+

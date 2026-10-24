@@ -111,6 +111,29 @@ der Installateursteuerung ist nicht vollständig dokumentiert.
 **an der Wallbox**; eine automatische Verriegelung im Fahrzeug ist damit
 nicht bestätigt.
 
+## Aufbau der Home-Assistant-Geräteseite
+
+Häufige Ladebedienung erscheint unter **Steuerung**: Start/Stopp, Ladeeinstellung,
+Lademodus, kundenspezifischer Ladestrom, OBC-Phasenwahl und Smart Mode.
+Die Mess- und Statuswerte bleiben unter **Sensoren**. Zeitfenster,
+automatische Kabelverriegelung, Hausstrom-Einstellung und Installateurfreigabe
+bleiben unter **Konfiguration**; technische Informationen und API-Diagnose
+unter **Diagnose**.
+
+Innerhalb dieser HA-Bereiche bleibt die alphabetische Reihenfolge bestehen.
+Es werden keine Nummern an Namen angehängt und keine eigenen Unterbereiche
+angelegt. Die vorhandenen Zeitfensternamen halten die Felder pro Zeitfenster
+zusammen. G1T bietet weiterhin nur die unterstützten Felder der zwei Zeitfenster.
+
+Die Geräteinformationen verwenden das vom Portal gemeldete Modell sowie,
+falls vorhanden, Software- und Hardwareversion. Bei G2T wird dadurch die alte
+feste Modellbezeichnung SMILE-EVCT11 durch z. B. SMILE-G3-EVCT11/S ersetzt;
+ein tatsächlich so gemeldetes G1T-Modell bleibt korrekt erhalten. Ohne
+Modellangabe wird neutral „AlphaESS Wallbox“ verwendet.
+Nach Installation der Änderung die Integration neu laden oder HA neu starten,
+damit vorhandene Registry-Einträge aktualisiert werden. Eigene Anzeigenamen,
+Gerätekennung, Entity-Unique-IDs und bestehende Automationen bleiben erhalten.
+
 ## G2T-Schutzlogik
 
 ### Laden starten und stoppen
@@ -244,3 +267,4 @@ Zugangsdaten, Tokens und persönliche Daten aus Logs entfernen. Seriennummern f�
 G2T wallboxes refresh the read-only portal `real-status` endpoint approximately every **5 seconds**, independently of the normal system/configuration refresh (30 seconds by default). This updates charging power, status, plug/lock state and the live energy fields without repeatedly loading settings and report history. A 3-second shared response cache also avoids duplicate status requests close to normal refreshes. G1T polling stays unchanged.
 
 The five-second interval is based on short read-only portal tests; it is **not** an official AlphaESS rate-limit guarantee. On connection errors the live reader backs off; HTTP 429 on live-status reads uses a longer 120-second pause. Authentication failures stop polling and require explicit reauthentication, including after a restart. HTTP 409/429 during login is also paused rather than automatically retried. No charge-control, schedules or Smart Mode logic was changed. AlphaESS has been observed to refresh cloud power values about every ten seconds, so five-second polling primarily lowers Home Assistant's additional detection delay.
+

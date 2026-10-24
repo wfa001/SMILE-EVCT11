@@ -164,12 +164,26 @@ class AlphaESSWallboxEntity(CoordinatorEntity[AlphaESSWallboxCoordinator]):
         super().__init__(coordinator)
         system_serial = entry.data[CONF_SYSTEM_SERIAL]
         self._attr_unique_id = f"{system_serial}_{key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, system_serial)},
+        self._system_serial = system_serial
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Use the model reported by the portal, retaining the device identity."""
+        wallbox = self.wallbox
+        model = wallbox.get("model")
+        if not isinstance(model, str) or not model.strip():
+            model = "AlphaESS Wallbox"
+        info = DeviceInfo(
+            identifiers={(DOMAIN, self._system_serial)},
             name="AlphaESS Wallbox",
             manufacturer="AlphaESS",
-            model="SMILE-EVCT11",
+            model=model.strip(),
         )
+        for source, target in (("softwareVersion", "sw_version"), ("hardwareVersion", "hw_version")):
+            value = wallbox.get(source)
+            if isinstance(value, str) and value.strip():
+                info[target] = value.strip()
+        return info
 
     @property
     def wallbox(self) -> dict[str, Any]:
@@ -182,3 +196,4 @@ class AlphaESSWallboxEntity(CoordinatorEntity[AlphaESSWallboxCoordinator]):
     @property
     def settings(self) -> dict[str, Any]:
         return settings_object(self.coordinator)[1]
+
