@@ -134,14 +134,14 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not serial:
                 return
             status = await self.api.async_get_live_status(serial)
-            # Some older G1T devices may expose no usable live endpoint.
-            # Avoid replacing coordinator data with empty/non-live payloads.
-            if not isinstance(status, dict) or not any(
-                key in status for key in ("status", "chargingStatus", "state", "power", "chargingPower", "currentPower", "realPower")
-            ):
-                self._live_status_supported = False
-                _LOGGER.warning("AlphaESS live-status payload unsupported; using regular refresh only")
-                return
+            if not isinstance(status, dict):
+                # Invalid JSON shapes are read failures, not evidence of a
+                # wallbox communication interruption or an unsupported route.
+                raise PortalConnectionError(step="wallbox status payload")
+            # The portal uses the same missing-status rule for G1T and G2T.
+            # Successful object replies, including counters only or {}, must
+            # replace stale values and keep polling to detect reconnection.
+            # G1T HTTP 404/409 fallback is handled separately below.
             self._live_status_supported = True
             self._live_success_count += 1
             self._last_live_success = datetime.now(timezone.utc)

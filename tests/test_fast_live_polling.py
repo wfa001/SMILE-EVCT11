@@ -68,7 +68,7 @@ def load_methods():
         and node.name == "AlphaESSWallboxCoordinator"
     )
     methods = {"start_live_polling", "_schedule_live_refresh",
-               "_async_live_refresh", "stop_live_polling"}
+               "_async_live_refresh", "stop_live_polling", "_async_update_data"}
     extracted = [node for node in original.body
                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                  and node.name in methods]
@@ -80,6 +80,7 @@ def load_methods():
         "AlphaESSPortalApi": AlphaESSPortalApi,
         "AuthenticationError": AuthenticationError,
         "PortalConnectionError": PortalConnectionError,
+        "UpdateFailed": RuntimeError,
         "async_call_later": async_call_later,
         "_G2T_LIVE_INTERVAL_SECONDS": 5,
         "_G2T_LIVE_MAX_BACKOFF_SECONDS": 120,
@@ -168,13 +169,14 @@ class LiveRefreshTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(item.notify_count, 0)
 
-    async def test_g1t_empty_payload_disables_fast_poll(self):
+    async def test_g1t_statusless_object_keeps_fast_poll(self):
         item = FakeCoordinator(generation="g1T")
         item.api.statuses = [{"some_unknown_field": "value"}]
         item.start_live_polling()
         await calls[-1].execute()
-        self.assertFalse(item._live_status_supported)
-        self.assertEqual(len(calls), 1)
+        self.assertTrue(item._live_status_supported)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(item.data["wallbox_status"], {"some_unknown_field": "value"})
 
     async def test_429_backs_off(self):
         item = FakeCoordinator()
