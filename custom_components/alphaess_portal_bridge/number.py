@@ -47,6 +47,7 @@ class AlphaESSWallboxChargeCurrentNumber(_CurrentNumberBase):
     """Set current for the active custom charging mode."""
 
     _attr_name = "Ladestrom (kundenspezifisch)"
+    _attr_entity_category = None
 
     def __init__(self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "custom_charge_current")
@@ -155,3 +156,4 @@ class AlphaESSTimePeriodCurrentNumber(_CurrentNumberBase):
         except (AuthenticationError, PortalConnectionError, ValueError) as err:
             raise HomeAssistantError(str(err) or "Der Ladestrom wurde nicht übernommen") from err
         await self.coordinator.async_request_refresh()
+

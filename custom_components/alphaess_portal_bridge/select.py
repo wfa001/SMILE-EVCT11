@@ -50,7 +50,7 @@ class AlphaESSWallboxModeSelect(AlphaESSWallboxEntity, SelectEntity):
     """Select the active charging mode for G1T or G2T."""
 
     _attr_name = "Lademodus"
-    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_category = None
 
     def __init__(self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "charge_mode_select")
@@ -91,7 +91,7 @@ class AlphaESSWallboxStrategySelect(AlphaESSWallboxEntity, SelectEntity):
 
     _attr_name = "Ladeeinstellung"
     _attr_options = list(STRATEGIES)
-    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_category = None
 
     def __init__(self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "charge_strategy_select")
@@ -140,7 +140,7 @@ class AlphaESSWallboxPhaseSelect(AlphaESSWallboxEntity, SelectEntity):
 
     _attr_name = "OBC Phasenwahl"
     _attr_options = list(PHASES)
-    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_category = None
 
     def __init__(self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "obc_phase_select")
@@ -221,3 +221,4 @@ class AlphaESSTimePeriodModeSelect(AlphaESSWallboxEntity, SelectEntity):
         except (AuthenticationError, PortalConnectionError, ValueError) as err:
             raise HomeAssistantError(str(err) or "Der Zeitrahmen wurde nicht übernommen") from err
         await self.coordinator.async_request_refresh()
+

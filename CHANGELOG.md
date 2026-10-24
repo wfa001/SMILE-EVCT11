@@ -2,6 +2,12 @@
 
 ## Unveröffentlicht
 
+### Geräteseite und korrekte Modellangabe
+
+- Ordnet Ladeeinstellung, Lademodus, kundenspezifischen Ladestrom, OBC-Phasenwahl und Smart Mode der täglichen Steuerung zu. Zeitfenster und seltene Einstellungen bleiben in Konfiguration; Diagnose und Messwerte behalten ihre Bereiche.
+- Verwendet das tatsächlich vom Portal gemeldete Modell statt der festen Angabe SMILE-EVCT11. Software- und Hardwareversion ergänzen die Geräteinformationen, sofern vorhanden; ohne Modellangabe wird neutral AlphaESS Wallbox verwendet.
+- Keine Nummern oder Änderungen an Geräte-/Entity-Unique-IDs. Innerhalb der Standardbereiche bleibt die HA-Sortierung alphabetisch. Vier zusätzliche Tests für G1T-/G2T-Metadaten, fehlende Angaben und stabile Identität.
+
 ### Anmeldung nach Passwortwechsel
 
 - Stoppt automatische Anmeldeversuche bei abgelehnten Zugangsdaten und bei HTTP 409/429 während der Anmeldung. Die Pause bleibt nach Neuladen und Neustart erhalten.
@@ -128,3 +134,4 @@
 #### 0.5.1–0.5.3
 
 - Grundlegende G2T-Erkennung sowie Status-, Lade-, OBC-, Zeitrahmen- und Energieentitäten aufgebaut.
+
