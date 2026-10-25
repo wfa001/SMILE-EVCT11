@@ -1,5 +1,10 @@
 # AlphaESS Wallbox Bridge
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="custom_components/alphaess_portal_bridge/brand/dark_logo@2x.png">
+  <img src="custom_components/alphaess_portal_bridge/brand/logo@2x.png" alt="Wallbox Bridge for AlphaESS" width="640">
+</picture>
+
 > **Beta 0.5.9**  
 > Entwickelt u.a. für die Community von **https://www.storion4you.de/**  
 > G2T-Erweiterung für **AlphaESS SMILE-G3-EVCT11/S**: **Kavino**  
