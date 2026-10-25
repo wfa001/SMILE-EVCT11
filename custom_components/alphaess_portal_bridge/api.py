@@ -386,8 +386,9 @@ class AlphaESSPortalApi:
             if not 6 <= charge_current <= 16:
                 raise ValueError("Der Ladestrom muss zwischen 6 und 16 A liegen")
             if generation == "g1T" and (
-                type(settings.get("chargeCurrent")) is not int
+                type(settings.get("chargeCurrent")) not in (int, float)
                 or not 6 <= settings["chargeCurrent"] <= 16
+                or settings["chargeCurrent"] != int(settings["chargeCurrent"])
             ):
                 raise ValueError("G1T Ladestrom ist im Portal nicht bestätigt")
             settings["chargeCurrent"] = charge_current

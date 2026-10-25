@@ -2,6 +2,13 @@
 
 ## Unveröffentlicht
 
+### G1T-Ladestrom als ganzzahliger Dezimalwert
+
+- Akzeptiert den vorhandenen Portalwert `chargeCurrent` auch als ganzzahlige Dezimalzahl, etwa `14.0`. Die bisherige reine `int`-Prüfung blockierte solche Werte vor dem Schreibaufruf.
+- Behält den Bereich 6–16 A und die Ablehnung von booleschen Werten, Zeichenketten, fehlenden Werten, Bruchteilen und nicht endlichen Zahlen bei. Modus- und START-/STOP-Prüfungen bleiben unverändert.
+- Ergänzt drei Regressionstests mit Grenzwert-/Datentypfällen und Prüfung, dass ungültige Werte keinen PATCH auslösen; 22 G1T-Kompatibilitäts- und Schreibtransaktionstests erfolgreich.
+- Lokal nach Core-Neustart geprüft: geänderte Sollwerte 13 A und 9 A wurden fehlerfrei gesetzt und vom Portal zurückgemeldet. Eine entsprechende physische Ladeleistungsänderung ist damit noch nicht bestätigt.
+
 ### Geräteseite und korrekte Modellangabe
 
 - Ordnet Ladeeinstellung, Lademodus, kundenspezifischen Ladestrom, OBC-Phasenwahl und Smart Mode der täglichen Steuerung zu. Zeitfenster und seltene Einstellungen bleiben in Konfiguration; Diagnose und Messwerte behalten ihre Bereiche.

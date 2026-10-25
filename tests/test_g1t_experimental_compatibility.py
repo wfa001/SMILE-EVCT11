@@ -65,6 +65,38 @@ def load_entity_helpers():
 
 
 class G1TCompatibilityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_integral_g1t_portal_currents_accept_int_and_float(self):
+        for current in (6, 14, 16, 6.0, 14.0, 16.0):
+            with self.subTest(current=current, value_type=type(current).__name__):
+                portal = FakeG1Portal()
+                portal.settings["chargeCurrent"] = current
+                before = copy.deepcopy(portal.configuration)
+                await portal.async_update_wallbox_settings(charge_current=9)
+                self.assertEqual(len(portal.patches), 1)
+                expected = before
+                expected["evCharger"][0]["g1T"]["chargeCurrent"] = 9
+                self.assertEqual(portal.configuration, expected)
+                self.assertIs(type(portal.settings["chargeCurrent"]), int)
+
+    async def test_invalid_g1t_portal_currents_block_patch(self):
+        invalid = (None, True, False, "14", 5, 17, 5.9, 16.1, 14.5,
+                   float("nan"), float("inf"), -float("inf"), {}, [])
+        for current in invalid:
+            with self.subTest(current=current):
+                portal = FakeG1Portal()
+                portal.settings["chargeCurrent"] = current
+                awaitable = portal.async_update_wallbox_settings(charge_current=9)
+                with self.assertRaises(ValueError):
+                    await awaitable
+                self.assertEqual(portal.patches, [])
+
+    async def test_missing_g1t_portal_current_blocks_patch(self):
+        portal = FakeG1Portal()
+        del portal.settings["chargeCurrent"]
+        with self.assertRaises(ValueError):
+            await portal.async_update_wallbox_settings(charge_current=9)
+        self.assertEqual(portal.patches, [])
+
     async def test_two_periods_can_be_updated_without_creating_a_third(self):
         portal = FakeG1Portal()
         self.assertEqual(len(portal.settings["timePeriods"]), 2)
