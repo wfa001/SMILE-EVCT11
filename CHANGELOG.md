@@ -2,6 +2,12 @@
 
 ## Unveröffentlicht
 
+### Gemeinsames Integrationssymbol und englisches Projektlogo
+
+- Ersetzt das feste G2T-Produktfoto als Integrationssymbol durch das gemeinsame Ladestecker-Symbol mit „for AlphaESS“. Das allgemeine Symbol steht damit für G1T und G2T.
+- Ergänzt ein breites englisches Projektlogo, eine Variante für dunkle Hintergründe und hochauflösende PNGs mit transparentem Hintergrund. Die README zeigt je nach Farbschema die passende Variante.
+- Behält die getrennten G1T-/G2T-Produktfotos beim Diagnose-Sensor Portal-Profil bei. Eine Symbolalternative ohne Schrift liegt unter docs/assets/charging-plug.png bereit.
+
 ### G1T-Ladestrom als ganzzahliger Dezimalwert
 
 - Akzeptiert den vorhandenen Portalwert `chargeCurrent` auch als ganzzahlige Dezimalzahl, etwa `14.0`. Die bisherige reine `int`-Prüfung blockierte solche Werte vor dem Schreibaufruf.
