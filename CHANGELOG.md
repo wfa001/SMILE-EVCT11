@@ -1,7 +1,5 @@
 # Changelog
 
-## Unveröffentlicht
-
 ### Gemeinsames Integrationssymbol und englisches Projektlogo
 
 - Ersetzt das feste G2T-Produktfoto als Integrationssymbol durch das gemeinsame Ladestecker-Symbol mit „for AlphaESS“. Das allgemeine Symbol steht damit für G1T und G2T.
