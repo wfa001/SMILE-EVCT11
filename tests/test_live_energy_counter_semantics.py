@@ -16,7 +16,7 @@ class LiveEnergyCounterTests(unittest.TestCase):
         source = SOURCE.read_text(encoding="utf-8")
         self.assertIn('"Heute geladen", "chargingAmount", "today_energy"', source)
         self.assertIn(
-            '"Aktueller / letzter Ladeabschnitt", "lastChargingAmount", "last_energy"',
+            '"Aktuelle / letzte Ladesitzung", "lastChargingAmount", "last_energy"',
             source,
         )
 
