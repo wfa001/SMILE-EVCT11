@@ -217,7 +217,7 @@ class AlphaESSYesNoSensor(AlphaESSWallboxEntity, SensorEntity):
 
 
 class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
-    """Energy value reported directly by the G2T live-status endpoint."""
+    """Energy value reported directly by the wallbox live-status endpoint."""
 
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
@@ -246,7 +246,7 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
             return None
         # G2T omits zero energy counters, e.g. after midnight or at the start
         # of a new session. Both counters use the same guarded zero fallback.
-        # Explicit null/invalid values, G1T and failed reads remain unknown.
+        # Explicit null/invalid values, unknown profiles and failed reads remain unknown.
         if self._key in {"chargingAmount", "lastChargingAmount"} and self._key not in status:
             generation, _settings = settings_object(self.coordinator)
             normal_states = {
@@ -254,7 +254,7 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
                 "CharingStopped", "InsufficientPower", "WaitingForChargingPile",
             }
             if (
-                generation == "g2T"
+                generation in {"g1T", "g2T"}
                 and data.get("wallbox_status_source") == "real_status"
                 and status.get("status") in normal_states
                 and getattr(self.coordinator, "last_update_success", True)
@@ -275,7 +275,7 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
             return {
                 "Quelle": "Portal real-status: chargingAmount",
                 "Hinweis": (
-                    "Summe der heutigen Ladesitzungen. Bei erfolgreicher G2T-Live-Antwort "
+                    "Summe der heutigen Ladesitzungen. Bei erfolgreicher G1T-/G2T-Live-Antwort "
                     "mit normalem Status und fehlendem chargingAmount wird 0 angezeigt. Bei Lesefehlern "
                     "oder fehlendem Status wird keine 0 ergänzt. Keine lokale Rücksetzung um Mitternacht."
                 ),
@@ -285,7 +285,7 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
             "Hinweis": (
                 "Energie der aktuellen oder letzten Ladesitzung; bleibt nach dem Abstecken zunächst erhalten. "
                 "Beginnt bei einer neuen Sitzung erneut; auch nach Tageswechsel kann das Portal das Feld weglassen. "
-                "Bei erfolgreicher G2T-Live-Antwort mit normalem Status und fehlendem lastChargingAmount wird 0 angezeigt. "
+                "Bei erfolgreicher G1T-/G2T-Live-Antwort mit normalem Status und fehlendem lastChargingAmount wird 0 angezeigt. "
                 "Explizites null, Lesefehler und fehlender Status erhalten keinen Nullersatz. "
                 "Kein dauerhaft gespeicherter letzter Ladevorgang über Tageswechsel hinweg."
             ),

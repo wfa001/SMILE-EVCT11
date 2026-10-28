@@ -37,18 +37,18 @@ nicht allein wegen ihres Auftretens als Null interpretiert.
 CSV-Verläufe sind keine vollständigen API-Rohantworten. Sie zeigen das
 Wiederholungsmuster, beweisen aber nicht den Inhalt jeder einzelnen Antwort.
 Eine mitten über Mitternacht laufende Ladung wurde hier nicht separat geprüft.
-Keine Übertragung der beobachteten G2T-Semantik auf G1T ohne Nachweis.
+Auf Wunsch des Betreibers wird die gleiche Nullwert-Regel auch für G1T aktiviert. Die Messbelege stammen weiterhin von G2T; der G1T-Tageswechsel ist noch praktisch zu bestätigen.
 
 ## Verhalten der Bridge
 
 Beide Energiefelder erhalten bei Abwesenheit denselben Nullwert-Ersatz nur wenn:
 
-- Profil g2T, Quelle real_status und Antwort ein Objekt;
+- Profil g1T oder g2T, Quelle real_status und Antwort ein Objekt;
 - normaler bekannter Status;
 - erfolgreiche Coordinator-Aktualisierung und keine erkannten Live-/Vollabfragefehler.
 
 Vorhandene Zahlen werden unverändert übernommen. Explizites null/ungültige Werte,
-fehlender oder fehlerhafter Status, System-Fallback und G1T erhalten keine neue Null.
+fehlender oder fehlerhafter Status, System-Fallback und unbekannte Profile erhalten keine neue Null.
 Die Bridge führt keine eigene Mitternachtsuhr und speichert keinen Tagesübergreifenden
 letzten Sitzungswert. Nach Tageswechsel kann der Sitzungswert deshalb ebenfalls 0 sein.
 Nur chargingAmount bleibt TOTAL_INCREASING; Sitzungsenergie erhält keine solche

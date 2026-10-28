@@ -157,8 +157,8 @@ class DailyEnergyTests(unittest.TestCase):
                 self.assertIsNone(self.energy(coordinator_with({"status": state})))
         self.assertIsNone(self.energy(coordinator_with({})))
 
-    def test_fallback_and_unconfirmed_g1t_do_not_synthesize_zero(self):
-        for generation, source in (("g2T", "system"), ("g1T", "real_status"), ("g2T", None)):
+    def test_fallback_and_unknown_profile_do_not_synthesize_zero(self):
+        for generation, source in (("g2T", "system"), ("unknown", "real_status"), ("g2T", None)):
             self.assertIsNone(self.energy(coordinator_with({"status": "NotInsertedGun"}, generation=generation, source=source)))
 
     def test_null_and_invalid_energy_do_not_become_zero(self):
@@ -187,12 +187,28 @@ class SessionEnergyTests(unittest.TestCase):
             self.assertEqual(self.energy(coordinator_with({"status": state}), "lastChargingAmount"), 0.0)
         for payload in ({}, {"status": None}, {"status": "Fault"}, {"status": "FutureState"}):
             self.assertIsNone(self.energy(coordinator_with(payload), "lastChargingAmount"))
-        for generation, source in (("g1T", "real_status"), ("g2T", "system"), ("g2T", None)):
+        for generation, source in (("unknown", "real_status"), ("g2T", "system"), ("g2T", None)):
             self.assertIsNone(self.energy(coordinator_with({"status": "NotInsertedGun"}, generation=generation, source=source), "lastChargingAmount"))
         for attribute, value in (("_live_refresh_errors", 1), ("_full_consecutive_errors", 1), ("last_update_success", False)):
             item = coordinator_with({"status": "NotInsertedGun"})
             setattr(item, attribute, value)
             self.assertIsNone(self.energy(item, "lastChargingAmount"))
+
+    def test_g1t_uses_same_zero_guards_for_both_counters(self):
+        for key in ("chargingAmount", "lastChargingAmount"):
+            for payload, expected in (({"status": "NotInsertedGun"}, 0.0),
+                                      ({"status": "Charging"}, 0.0),
+                                      ({"status": "Fault"}, None),
+                                      ({}, None),
+                                      ({"status": "Charging", key: None}, None),
+                                      ({"status": "NotInsertedGun", key: 0.76}, 0.76)):
+                self.assertEqual(self.energy(coordinator_with(payload, generation="g1T"), key), expected)
+            for source in ("system", None):
+                self.assertIsNone(self.energy(coordinator_with({"status": "NotInsertedGun"}, generation="g1T", source=source), key))
+            for attribute, value in (("_live_refresh_errors", 1), ("_full_consecutive_errors", 1), ("last_update_success", False)):
+                item = coordinator_with({"status": "NotInsertedGun"}, generation="g1T")
+                setattr(item, attribute, value)
+                self.assertIsNone(self.energy(item, key))
 
     def test_session_explicit_null_and_invalid_are_not_missing_zero(self):
         for value in (None, "", "invalid", [], {}):
