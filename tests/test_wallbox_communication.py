@@ -144,7 +144,7 @@ class DailyEnergyTests(unittest.TestCase):
     def test_midnight_reply_without_energy_shows_zero(self):
         item = coordinator_with({"status": "NotInsertedGun", "gunIsLock": False, "power": 0.0})
         self.assertEqual(self.energy(item), 0.0)
-        self.assertIsNone(self.energy(item, "lastChargingAmount"))
+        self.assertEqual(self.energy(item, "lastChargingAmount"), 0.0)
 
     def test_reported_energy_is_preserved_including_zero(self):
         for value in (0, 11.6):
@@ -157,8 +157,8 @@ class DailyEnergyTests(unittest.TestCase):
                 self.assertIsNone(self.energy(coordinator_with({"status": state})))
         self.assertIsNone(self.energy(coordinator_with({})))
 
-    def test_fallback_and_unconfirmed_g1t_do_not_synthesize_zero(self):
-        for generation, source in (("g2T", "system"), ("g1T", "real_status"), ("g2T", None)):
+    def test_fallback_and_unknown_profile_do_not_synthesize_zero(self):
+        for generation, source in (("g2T", "system"), ("unknown", "real_status"), ("g2T", None)):
             self.assertIsNone(self.energy(coordinator_with({"status": "NotInsertedGun"}, generation=generation, source=source)))
 
     def test_null_and_invalid_energy_do_not_become_zero(self):
@@ -174,6 +174,61 @@ class DailyEnergyTests(unittest.TestCase):
             self.assertIsNone(self.energy(item))
             setattr(item, attribute, True if attribute == "last_update_success" else 0)
             self.assertEqual(self.energy(item), 0.0)
+
+
+class SessionEnergyTests(unittest.TestCase):
+    """Session omission follows the same safety guards as daily omission."""
+
+    energy = DailyEnergyTests.energy
+
+    def test_session_missing_field_requires_healthy_g2t_live_reply(self):
+        for state in ("NotInsertedGun", "PendingStart", "Charging", "ChargingStopped",
+                      "CharingStopped", "InsufficientPower", "WaitingForChargingPile"):
+            self.assertEqual(self.energy(coordinator_with({"status": state}), "lastChargingAmount"), 0.0)
+        for payload in ({}, {"status": None}, {"status": "Fault"}, {"status": "FutureState"}):
+            self.assertIsNone(self.energy(coordinator_with(payload), "lastChargingAmount"))
+        for generation, source in (("unknown", "real_status"), ("g2T", "system"), ("g2T", None)):
+            self.assertIsNone(self.energy(coordinator_with({"status": "NotInsertedGun"}, generation=generation, source=source), "lastChargingAmount"))
+        for attribute, value in (("_live_refresh_errors", 1), ("_full_consecutive_errors", 1), ("last_update_success", False)):
+            item = coordinator_with({"status": "NotInsertedGun"})
+            setattr(item, attribute, value)
+            self.assertIsNone(self.energy(item, "lastChargingAmount"))
+
+    def test_g1t_uses_same_zero_guards_for_both_counters(self):
+        for key in ("chargingAmount", "lastChargingAmount"):
+            for payload, expected in (({"status": "NotInsertedGun"}, 0.0),
+                                      ({"status": "Charging"}, 0.0),
+                                      ({"status": "Fault"}, None),
+                                      ({}, None),
+                                      ({"status": "Charging", key: None}, None),
+                                      ({"status": "NotInsertedGun", key: 0.76}, 0.76)):
+                self.assertEqual(self.energy(coordinator_with(payload, generation="g1T"), key), expected)
+            for source in ("system", None):
+                self.assertIsNone(self.energy(coordinator_with({"status": "NotInsertedGun"}, generation="g1T", source=source), key))
+            for attribute, value in (("_live_refresh_errors", 1), ("_full_consecutive_errors", 1), ("last_update_success", False)):
+                item = coordinator_with({"status": "NotInsertedGun"}, generation="g1T")
+                setattr(item, attribute, value)
+                self.assertIsNone(self.energy(item, key))
+
+    def test_session_explicit_null_and_invalid_are_not_missing_zero(self):
+        for value in (None, "", "invalid", [], {}):
+            self.assertIsNone(self.energy(coordinator_with({"status": "NotInsertedGun", "lastChargingAmount": value}), "lastChargingAmount"))
+
+    def test_two_sessions_and_midnight_keep_counters_independent(self):
+        item = coordinator_with({"status": "NotInsertedGun", "chargingAmount": 3.73, "lastChargingAmount": 3.73})
+        self.assertEqual(self.energy(item, "lastChargingAmount"), 3.73)
+        item.data["wallbox_status"] = {"status": "Charging", "chargingAmount": 3.73}
+        self.assertEqual(self.energy(item), 3.73)
+        self.assertEqual(self.energy(item, "lastChargingAmount"), 0.0)
+        item.data["wallbox_status"] = {"status": "Charging", "chargingAmount": 4.29, "lastChargingAmount": 0.56}
+        self.assertEqual(self.energy(item), 4.29)
+        self.assertEqual(self.energy(item, "lastChargingAmount"), 0.56)
+        item.data["wallbox_status"] = {"status": "NotInsertedGun", "chargingAmount": 4.49, "lastChargingAmount": 0.76}
+        self.assertEqual(self.energy(item), 4.49)
+        self.assertEqual(self.energy(item, "lastChargingAmount"), 0.76)
+        item.data["wallbox_status"] = {"status": "NotInsertedGun", "power": 0}
+        self.assertEqual(self.energy(item), 0.0)
+        self.assertEqual(self.energy(item, "lastChargingAmount"), 0.0)
 
 
 class PollingTests(unittest.IsolatedAsyncioTestCase):

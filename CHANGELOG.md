@@ -1,5 +1,12 @@
 # Changelog
 
+### G1T-/G2T-Sitzungsenergie bei fehlendem Nullwert
+
+- Ergänzt den bereits für die Tagesenergie vorhandenen geschützten Nullwert-Ersatz auch für `lastChargingAmount`. Fehlende Sitzungswerte werden bei erfolgreicher G1T-/G2T-Live-Antwort mit normalem Status als 0 kWh angezeigt, etwa nach Tageswechsel oder zu Sitzungsbeginn.
+- Behält gemeldete Sitzungswerte nach dem Abstecken bei. Explizites `null`, ungültige Werte, Fehlerstatus, fehlender Status, erkannte Lesefehler und System-Fallbacks erhalten keinen Nullersatz; die gleiche Regel ist für G1T aktiviert, dessen Tageswechsel noch praktisch zu bestätigen ist.
+- Benennt „Aktueller / letzter Ladeabschnitt“ in „Aktuelle / letzte Ladesitzung“ um. Unique-ID und Datenquelle bleiben unverändert. Der Hinweis erläutert, dass der Portalwert auch nach Tageswechsel zurückgesetzt werden kann.
+- Dokumentiert den G2T-Abgleich zweier Ladesitzungen vom 28.10.2026 und ergänzt Regressionstests für unabhängige Zähler und die Nullwert-Schutzbedingungen.
+
 ### Gemeinsames Integrationssymbol und englisches Projektlogo
 
 - Ersetzt das feste G2T-Produktfoto als Integrationssymbol durch das gemeinsame Ladestecker-Symbol mit „for AlphaESS“. Das allgemeine Symbol steht damit für G1T und G2T.
@@ -158,4 +165,3 @@
 #### 0.5.1–0.5.3
 
 - Grundlegende G2T-Erkennung sowie Status-, Lade-, OBC-, Zeitrahmen- und Energieentitäten aufgebaut.
-

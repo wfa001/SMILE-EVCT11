@@ -161,8 +161,8 @@ Ein Wechsel auf Zeitgesteuertes Aufladen bei aktivem Smart Mode wird blockiert. 
 
 1. **Smart-Mode-Phasenautomatik:** Smart Mode wurde erfolgreich aktiviert. Die automatische 1↔3-Phasenumschaltung bei geeignetem PV-Überschuss ist noch nicht abschließend live bestätigt.
 2. **OBC „2-phasig“:** AlphaESS-App und Portal speichern den Wert. Bei einem Test mit einem Peugeot e-208 wurde trotz der Auswahl „2-phasig“ extern auf allen drei Phasen Leistung gemessen. Die Entität zeigt deshalb eine **Sollwahl**, nicht die tatsächlich stromführenden Phasen.
-3. **`chargingAmount`:** Wird wie in der AlphaESS-App als **„In dieser Sitzung geladen“** angezeigt. Der Wert blieb im Test nach erneutem Anstecken erhalten; seine genaue Definition und sein Reset-Zeitpunkt sind offen.
-4. **`lastChargingAmount`:** Wird als **„Letzter Ladeabschnitt“** angezeigt. Der Wert kann zeitweise `null` sein und erhält keinen künstlichen Fallback.
+3. **`chargingAmount`:** **„Heute geladen“** summiert bei der getesteten G2T mehrere Ladesitzungen am selben Tag. Die App beschriftete diesen Tageswert im Test irreführend mit „In dieser Sitzung geladen“.
+4. **`lastChargingAmount`:** **„Aktuelle / letzte Ladesitzung“** zählt bei der getesteten G2T die aktuelle Sitzung und bleibt nach dem Abstecken zunächst erhalten. Beim erneuten Anstecken beginnt der Wert erneut; auch nach Tageswechsel kann das Portal das Feld weglassen. Der Wert ist kein dauerhaftes Archiv der letzten Ladung. Fehlende Felder erhalten nur unter den unten beschriebenen Bedingungen 0; explizites `null` bleibt unbekannt.
 5. **„Heute laut Ladebericht“:** Summe abgeschlossener Berichtseinträge des aktuellen Tages. Der Wert war in einem Test während einer Live-Ladung noch 0,00 kWh und ist daher vorerst als experimentell zu betrachten.
 
 Besonders erwünscht sind Tests mit weiteren G2T-Fahrzeugmodellen und Firmwareständen, eine G1T-Regressionsprüfung, die Smart-Mode-Phasenautomatik, zweiphasig ladenden Fahrzeugen sowie das Resetverhalten von `chargingAmount` und die Plausibilität des Tagesberichts.
@@ -221,16 +221,25 @@ Diese allgemeinen Statuswerte enthalten keine genaue Fehlerursache. Insbesondere
 
 Versuch und Quellen: [RS485-Kommunikationstest vom 23.10.2026](docs/wallbox_communication_2026-10-23.md).
 
-### „Heute geladen“ nach dem Tageswechsel
+### Energieanzeigen und fehlende Nullwerte
 
 Bei G2T wurde beobachtet: Nach Mitternacht ohne neue Ladung zeigt das Portal
 0 kWh; die erfolgreiche `real-status`-Antwort enthält einen normalen Status,
-aber kein `chargingAmount`. In diesem Fall zeigt die Bridge ebenfalls 0 kWh.
+aber kein `chargingAmount`. Auch `lastChargingAmount` wird bei einem Nullwert
+weggelassen, beispielsweise nach Tageswechsel oder zu Beginn einer neuen Sitzung.
+Bei einer erfolgreichen G1T-/G2T-Live-Antwort mit normalem Status zeigt die Bridge
+für das jeweils fehlende Energiefeld ebenfalls 0 kWh. Vorhandene Zahlenwerte
+werden unabhängig voneinander übernommen und nach Abstecken nicht pauschal gelöscht.
 Bei fehlendem Status, Fehlerzuständen, erkannten Abfragefehlern, System-Fallbacks,
 explizitem `null` oder ungültigen Werten wird keine 0 ergänzt. Für G1T fehlt
-noch ein entsprechender Nachweis. „Aktueller / letzter Ladeabschnitt“ erhält
-keinen Null-Ersatzwert. Die Addition mehrerer Ladungen am selben Tag bleibt
-noch zu prüfen; es gibt keine lokale Rücksetzung um Mitternacht.
+noch ein entsprechender Praxistest des Tageswechsels; die gleiche Nullwert-Regel ist auf Wunsch auch dort aktiviert. Es gibt keine lokale Rücksetzung um Mitternacht.
+Die bisherigen Geräte-/Entitäts-Unique-IDs bleiben erhalten.
+
+Beim G2T-Test vom 28.10.2026 ergaben die erste Sitzung mit 3,73 kWh und die
+zweite mit 0,76 kWh zusammen 4,49 kWh Tagesenergie. Zwischenzeitlich zeigte
+die App 4,29 kWh, passend zu 3,73 + 0,56 kWh, während der Sitzungssensor
+0,56 kWh lieferte. Die Energieanzeigen wurden ungefähr alle fünf Minuten aktualisiert.
+Details: [G2T-Energieauswertung vom 28.10.2026](docs/wallbox_energy_2026-10-28.md).
 
 ## G2T-Portal-Zuordnungen
 
@@ -272,4 +281,3 @@ Zugangsdaten, Tokens und persönliche Daten aus Logs entfernen. Seriennummern f�
 G2T wallboxes refresh the read-only portal `real-status` endpoint approximately every **5 seconds**, independently of the normal system/configuration refresh (30 seconds by default). This updates charging power, status, plug/lock state and the live energy fields without repeatedly loading settings and report history. A 3-second shared response cache also avoids duplicate status requests close to normal refreshes. G1T polling stays unchanged.
 
 The five-second interval is based on short read-only portal tests; it is **not** an official AlphaESS rate-limit guarantee. On connection errors the live reader backs off; HTTP 429 on live-status reads uses a longer 120-second pause. Authentication failures stop polling and require explicit reauthentication, including after a restart. HTTP 409/429 during login is also paused rather than automatically retried. No charge-control, schedules or Smart Mode logic was changed. AlphaESS has been observed to refresh cloud power values about every ten seconds, so five-second polling primarily lowers Home Assistant's additional detection delay.
-

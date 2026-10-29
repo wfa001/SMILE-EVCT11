@@ -51,7 +51,7 @@ async def async_setup_entry(
             AlphaESSYesNoSensor(coordinator, entry, "Fahrzeug angeschlossen", "vehicle_connected"),
             AlphaESSYesNoSensor(coordinator, entry, "Ladestecker verriegelt", "gun_locked"),
             AlphaESSWallboxEnergySensor(coordinator, entry, "Heute geladen", "chargingAmount", "today_energy"),
-            AlphaESSWallboxEnergySensor(coordinator, entry, "Aktueller / letzter Ladeabschnitt", "lastChargingAmount", "last_energy"),
+            AlphaESSWallboxEnergySensor(coordinator, entry, "Aktuelle / letzte Ladesitzung", "lastChargingAmount", "last_energy"),
             AlphaESSWallboxModeSensor(coordinator, entry),
             AlphaESSWallboxGenerationSensor(coordinator, entry),
             AlphaESSWallboxInformationSensor(coordinator, entry, "Serialnummer", "sn"),
@@ -217,7 +217,7 @@ class AlphaESSYesNoSensor(AlphaESSWallboxEntity, SensorEntity):
 
 
 class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
-    """Energy value reported directly by the G2T live-status endpoint."""
+    """Energy value reported directly by the wallbox live-status endpoint."""
 
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
@@ -233,7 +233,8 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         super().__init__(coordinator, entry, unique_key)
         self._attr_name = name
         self._key = key
-        # Portal zero after midnight observed; aggregation across sessions still open.
+        # G2T: chargingAmount sums today's sessions; lastChargingAmount resets
+        # for a new session and may also be omitted after the daily reset.
         if key == "chargingAmount":
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
 
@@ -243,17 +244,17 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         status = data.get("wallbox_status")
         if not isinstance(status, dict):
             return None
-        # The G2T portal shows zero after midnight when a successful live reply
-        # has a normal status but omits chargingAmount. Do not generalise this
-        # to null/invalid fields, lastChargingAmount, G1T or failed reads.
-        if self._key == "chargingAmount" and self._key not in status:
+        # G2T omits zero energy counters, e.g. after midnight or at the start
+        # of a new session. Both counters use the same guarded zero fallback.
+        # Explicit null/invalid values, unknown profiles and failed reads remain unknown.
+        if self._key in {"chargingAmount", "lastChargingAmount"} and self._key not in status:
             generation, _settings = settings_object(self.coordinator)
             normal_states = {
                 "NotInsertedGun", "PendingStart", "Charging", "ChargingStopped",
                 "CharingStopped", "InsufficientPower", "WaitingForChargingPile",
             }
             if (
-                generation == "g2T"
+                generation in {"g1T", "g2T"}
                 and data.get("wallbox_status_source") == "real_status"
                 and status.get("status") in normal_states
                 and getattr(self.coordinator, "last_update_success", True)
@@ -274,16 +275,19 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
             return {
                 "Quelle": "Portal real-status: chargingAmount",
                 "Hinweis": (
-                    "Portal-Anzeige nach Tageswechsel mit 0 bestätigt. Bei erfolgreicher G2T-Live-Antwort "
+                    "Summe der heutigen Ladesitzungen. Bei erfolgreicher G1T-/G2T-Live-Antwort "
                     "mit normalem Status und fehlendem chargingAmount wird 0 angezeigt. Bei Lesefehlern "
-                    "oder fehlendem Status wird keine 0 ergänzt. Mehrere Ladungen am selben Tag sind noch zu prüfen."
+                    "oder fehlendem Status wird keine 0 ergänzt. Keine lokale Rücksetzung um Mitternacht."
                 ),
             }
         return {
             "Quelle": "Portal real-status: lastChargingAmount",
             "Hinweis": (
-                "Energie des laufenden oder zuletzt abgeschlossenen Ladeabschnitts. "
-                "Bei einer neuen Ladung beginnt der Wert erneut und kann zeitweise fehlen."
+                "Energie der aktuellen oder letzten Ladesitzung; bleibt nach dem Abstecken zunächst erhalten. "
+                "Beginnt bei einer neuen Sitzung erneut; auch nach Tageswechsel kann das Portal das Feld weglassen. "
+                "Bei erfolgreicher G1T-/G2T-Live-Antwort mit normalem Status und fehlendem lastChargingAmount wird 0 angezeigt. "
+                "Explizites null, Lesefehler und fehlender Status erhalten keinen Nullersatz. "
+                "Kein dauerhaft gespeicherter letzter Ladevorgang über Tageswechsel hinweg."
             ),
         }
 

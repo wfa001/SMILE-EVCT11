@@ -58,6 +58,12 @@ Versuchs ist bestätigt; der Praxistest der geänderten HA-Integration steht aus
 
 ## Tageswechsel am 24.10.2026
 
+Nachtrag vom 28.10.: Die damalige Beschränkung des Nullwert-Ersatzes auf
+chargingAmount wird mit zusätzlichen Sitzungsbeobachtungen auch auf
+lastChargingAmount erweitert. Die folgenden Absätze beschreiben den
+damaligen Kenntnisstand; aktuelles Verhalten und Grenzen siehe
+[G2T-Energieauswertung](wallbox_energy_2026-10-28.md).
+
 Vor Mitternacht meldete die G2T-Wallbox `chargingAmount: 11.6` und
 `lastChargingAmount: 11.6`. Die Webseite zeigte „Heutige Ladung 11,6 kWh“.
 Die Integration des vom Betreiber exportierten Shelly-Leistungsverlaufs ergab
