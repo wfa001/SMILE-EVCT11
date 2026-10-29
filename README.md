@@ -5,7 +5,7 @@
   <img src="custom_components/alphaess_portal_bridge/brand/logo@2x.png" alt="Wallbox Bridge for AlphaESS" width="640">
 </picture>
 
-> **Beta 0.5.9**  
+> **Beta 0.6.0**  
 > Entwickelt u.a. für die Community von **https://www.storion4you.de/**  
 > G2T-Erweiterung für **AlphaESS SMILE-G3-EVCT11/S**: **Kavino**  
 
