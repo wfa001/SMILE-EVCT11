@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import logging
 
 from datetime import timedelta
 
@@ -27,6 +28,8 @@ from .const import (
     UPDATE_INTERVAL_OPTIONS,
 )
 from .coordinator import AlphaESSWallboxCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
@@ -71,6 +74,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, object]) -> bool:
             ),
         ]
     )
+    try:
+        from .dashboard import DashboardExportView
+
+        hass.http.register_view(DashboardExportView(hass))
+    except Exception:
+        _LOGGER.exception("Dashboard export unavailable; wallbox setup continues")
     return True
 
 
@@ -166,6 +175,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.config_entries.async_update_entry(entry, title=desired_title)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     coordinator.start_live_polling()
+    try:
+        from .dashboard import async_setup_dashboard
+
+        await async_setup_dashboard(hass, entry, coordinator)
+    except Exception:
+        _LOGGER.exception("Managed dashboard unavailable; wallbox integration remains active")
     return True
 
 
@@ -173,6 +188,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload the portal session."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
+        try:
+            from .dashboard import async_unload_dashboard
+
+            async_unload_dashboard(hass, entry.entry_id)
+        except Exception:
+            _LOGGER.exception("Managed dashboard cleanup failed")
         coordinator = hass.data[DOMAIN].pop(entry.entry_id, None)
         if coordinator is not None:
             coordinator.stop_followup_refresh()

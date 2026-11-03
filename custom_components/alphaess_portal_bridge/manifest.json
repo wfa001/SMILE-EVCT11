@@ -12,5 +12,10 @@
   "version": "0.6.0",
   "loggers": [
     "custom_components.alphaess_portal_bridge"
+  ],
+  "dependencies": [
+    "frontend",
+    "http",
+    "lovelace"
   ]
 }
