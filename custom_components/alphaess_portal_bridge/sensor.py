@@ -89,7 +89,12 @@ class AlphaESSBridgeConnectionSensor(AlphaESSWallboxEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         coordinator = self.coordinator
         return {
-            "Hinweis": "Verbindung zur AlphaESS-Portal-API, nicht Wallbox online/offline",
+            "Hinweis": (
+                "Portal-Verbindung; Abfragezeit ist keine Messzeit der Wallbox. "
+                "Portalbestätigung bestätigt nur gespeicherte Einstellungen, keine physische Ausführung."
+            ),
+            **(coordinator.api.settings_feedback.attributes()
+               if getattr(coordinator.api, 'settings_feedback', None) else {}),
             "Letzte erfolgreiche Live-Abfrage": (
                 coordinator._last_live_success.isoformat()
                 if coordinator._last_live_success else None
