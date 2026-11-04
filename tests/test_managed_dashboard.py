@@ -152,6 +152,38 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(gauge['max'],11)
         self.assertNotIn('unit',gauge)
 
+    def test_schedule_guidance_only_matches_known_inactive_strategies(self):
+        config=builder.build_dashboard([builder.WallboxDashboard(
+            'A','Garage','g2T',{'charge_strategy_select':'select.strategy'})])
+        schedule_view=config['views'][2]
+        hints=[c for c in cards(schedule_view) if c.get('type')=='conditional'
+               and 'Zum Verwenden' in c.get('card',{}).get('content','')]
+        self.assertEqual({c['conditions'][0]['state'] for c in hints},
+                         {'Manuell','Plug and Play'})
+        self.assertTrue(all(c['conditions'][0]['entity']=='select.strategy' for c in hints))
+        # Renamed and multi-wallbox routes must also reach the correct schedule.
+        config=builder.build_dashboard([
+            builder.WallboxDashboard('A','Garage','g2T',{'charge_strategy_select':'select.strategy'}),
+            builder.WallboxDashboard('B','Carport','g1T',{})],url_path='bridge-2')
+        wallbox_view=config['views'][1]
+        hint=next(c for c in cards(wallbox_view) if 'Lademodi unter' in c.get('content',''))
+        self.assertIn('/bridge-2/wb-a-zeitfenster',hint['content'])
+
+    def test_explanations_collapse_but_connection_warnings_remain_visible(self):
+        config=builder.build_dashboard([builder.WallboxDashboard(
+            'A','Garage','g2T',{'api_connection':'sensor.api',
+            'obc_phase_select':'select.phase','household_current':'number.house'})])
+        notes=[c for c in cards(config) if c.get('type')=='markdown']
+        warning=next(c for c in notes if 'Bridge-Verbindung prüfen' in c['content'])
+        self.assertNotIn('<details',warning['content'])
+        for word in ('Phasenwahl erklärt','Hausstrom-Einstellung erklärt','Verlauf richtig lesen'):
+            help_card=next(c for c in notes if word in c['content'])
+            self.assertIn('<details>',help_card['content'])
+            self.assertNotIn('<details open',help_card['content'])
+        no_controls=builder.build_dashboard([builder.WallboxDashboard('B','Carport','g1T',{})])
+        self.assertNotIn('Hausstrom-Einstellung erklärt',json.dumps(no_controls))
+        self.assertNotIn('Ladesteuerung erklärt',json.dumps(no_controls))
+
     def test_multiple_wallboxes_have_selection_and_disjoint_targets(self):
         boxes=[builder.WallboxDashboard(key,key,'g1T',{'power':f'sensor.{key}'}) for key in ('a','b')]
         config=builder.build_dashboard(boxes)
@@ -162,6 +194,34 @@ class DashboardTests(unittest.TestCase):
         a=json.dumps(config['views'][1:5]);b=json.dumps(config['views'][5:])
         self.assertIn('sensor.a',a);self.assertNotIn('sensor.b',a)
         self.assertIn('sensor.b',b);self.assertNotIn('sensor.a',b)
+
+    def test_mode_help_matches_global_and_period_controls_and_disappears_with_them(self):
+        entities={'charge_mode_select':'select.global_mode',
+                  'time_period_1_start':'time.start','time_period_1_end':'time.end',
+                  'time_period_1_mode':'select.period_mode',
+                  'time_period_1_current':'number.period_current'}
+        config=builder.build_dashboard([builder.WallboxDashboard(
+            'A','Garage','g2T',entities,{'timePeriods':[period(chargeMode=4,chargeCurrent=16)]})])
+        help_nodes=[c for c in cards(config) if c.get('type')=='conditional'
+                    and '<summary>Lademodi erklärt</summary>' in c.get('card',{}).get('content','')]
+        self.assertEqual({c['conditions'][0]['entity'] for c in help_nodes},
+                         {'select.global_mode','select.period_mode'})
+        self.assertEqual(len({c['card']['content'] for c in help_nodes}),1)
+        for node in help_nodes:
+            self.assertEqual(node['conditions'][0]['state_not'],'unknown')
+            parent=next(c for c in cards(config) if c.get('card') is node)
+            self.assertEqual(parent['conditions'][0]['state_not'],'unavailable')
+        self.assertIn('Ladestrom erklärt',json.dumps(config,ensure_ascii=False))
+        config=builder.build_dashboard([builder.WallboxDashboard('B','Carport','g1T',{})])
+        self.assertNotIn('Lademodi erklärt',json.dumps(config,ensure_ascii=False))
+
+    def test_g1_mode_help_does_not_require_g2_features(self):
+        config=builder.build_dashboard([builder.WallboxDashboard(
+            'A','Garage','g1T',{'charge_mode_select':'select.old_wallbox'})])
+        text=json.dumps(config,ensure_ascii=False)
+        self.assertIn('Lademodi erklärt',text)
+        self.assertNotIn('Smart Mode erklärt',text)
+        self.assertNotIn('Phasenwahl erklärt',text)
 
     def test_no_statistic_chart_without_statistics_capability(self):
         config=builder.build_dashboard([builder.WallboxDashboard('A','Garage',None,{})])
