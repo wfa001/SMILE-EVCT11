@@ -23,8 +23,8 @@ from homeassistant.helpers.json import cached_json_fragment
 
 from .const import CONF_SYSTEM_SERIAL, DOMAIN
 from .dashboard_builder import WallboxDashboard, build_dashboard
+from .dashboard_capabilities import supported_dashboard_controls
 from .entity import settings_object
-from .schedule import schedule_supported, strategy_supported
 
 _LOGGER = logging.getLogger(__name__)
 DATA_MANAGER = f"{DOMAIN}_managed_dashboard"
@@ -67,25 +67,10 @@ def resolve_entities(registry, entry) -> dict[str, str]:
 def filter_capabilities(entities: dict[str, str], profile: str | None,
                         settings: dict[str, Any]) -> dict[str, str]:
     """Distinguish unsupported fields from temporary unavailable live values."""
-    result = dict(entities)
-    if profile != "g2T":
-        for key in ("obc_phase_select", "smart_mode", "gun_line_self_lock_enabled"):
-            result.pop(key, None)
-    elif settings.get("isSupportGunLineSelfLock") is not True:
-        result.pop("gun_line_self_lock_enabled", None)
-    if not strategy_supported(profile, settings):
-        result.pop("charge_strategy_select", None)
-    periods = settings.get("timePeriods", []) if schedule_supported(profile, settings) else []
-    for index in range(1, 4):
-        period = periods[index - 1] if index <= len(periods) else {}
-        if not isinstance(period, dict) or (profile == "g1T" and index > 2):
-            period = {}
-        for suffix, field in (("start", "startTime"), ("end", "endTime"),
-                              ("enabled", "isEnable"), ("mode", "chargeMode"),
-                              ("current", "chargeCurrent")):
-            if field not in period:
-                result.pop(f"time_period_{index}_{suffix}", None)
-    return result
+    supported = supported_dashboard_controls(profile, settings)
+    return {key: entity for key, entity in entities.items()
+            if ENTITY_DOMAINS.get(key) not in {"select", "number", "switch", "time", "button"}
+            or key == "advanced_diagnostics" or key in supported}
 
 
 class ManagedDashboard(LovelaceConfig):
