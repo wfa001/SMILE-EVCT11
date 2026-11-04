@@ -65,7 +65,10 @@ class AlphaESSWallboxModeSelect(AlphaESSWallboxEntity, SelectEntity):
         generation, settings = settings_object(self.coordinator)
         # The portal hides the global Lademodus while G2T is controlled by
         # time periods.  Mirror that behavior instead of showing "unknown".
-        return super().available and not (schedule_supported(generation, settings) and settings.get("chargeStrategy") == 1)
+        return super().available and not (
+            generation == "g2T" and schedule_supported(generation, settings)
+            and settings.get("chargeStrategy") == 1
+        )
 
     @property
     def current_option(self) -> str | None:

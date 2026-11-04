@@ -6,6 +6,7 @@ verified independently of a running Home Assistant instance.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from html import escape
 from typing import Any
 
@@ -84,6 +85,35 @@ def _condition(card: dict, entity: str, value: str, *, invert: bool = False) -> 
 def _available(card: dict, entity: str) -> dict:
     return _condition(_condition(card, entity, "unknown", invert=True),
                       entity, "unavailable", invert=True)
+
+
+def _smart_mode_hint(entities: dict[str, str]) -> dict:
+    """Re-evaluate prerequisites from live HA states without layout rebuilds.
+
+Keep the switch accessible for disabling a stored Smart Mode. The API accepts
+all three ECO modes; only Slow's automatic phase switch is documented, so this
+hint must not invent a new write restriction for Standard or Fast.
+"""
+    keys = ("smart_mode", "charge_strategy_select", "obc_phase_select", "charge_mode_select")
+    expressions = [f"states({json.dumps(entities[key])})" if entities.get(key) else "'unknown'"
+                   for key in keys]
+    template = "{% set smart, strategy, phase, mode = " + ", ".join(expressions) + " %}\n"
+    template += (
+        "{%- if smart in ['on', 'off'] -%}"
+        "{%- if strategy == 'Zeitgesteuertes Aufladen' -%}"
+        "Smart Mode ist bei Zeitsteuerung nicht verfügbar."
+        "{%- elif phase in ['1-phasig', '2-phasig'] -%}"
+        "Für Smart Mode die OBC-Phasenwahl auf **3-phasig** stellen."
+        "{%- elif mode == 'Kundenspezifische Ladeleistung' -%}"
+        "Für automatische Phasenumschaltung **Langsamladung** auswählen."
+        "{%- elif smart == 'on' and mode in ['Schonladung / Standardleistung', 'Schnellladung'] -%}"
+        "Automatische Phasenumschaltung ist nur für **Langsamladung** dokumentiert."
+        "{%- elif smart == 'on' and (strategy not in ['Manuell', 'Plug and Play'] "
+        "or phase != '3-phasig' or mode != 'Langsamladung') -%}"
+        "Smart-Mode-Voraussetzungen derzeit nicht vollständig prüfbar."
+        "{%- endif -%}{%- endif -%}")
+    return {**_note(template), "show_empty": False,
+            "entity_id": [entities[key] for key in keys if entities.get(key)]}
 
 
 def _graph(title: str, entities: list[tuple[str | None, str]], rows: int = 3) -> dict | None:
@@ -193,6 +223,7 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
                         "Passend zum Ladegerät deines Fahrzeugs auswählen. "
                         "Die Auswahl zeigt keine tatsächlich gemessenen Phasen."), entity))
                 elif key == "smart_mode":
+                    right.append(_smart_mode_hint(e))
                     right.append(_available(_help("Smart Mode erklärt",
                         "Wechselt bei Langsamladung automatisch zwischen einer und drei Phasen. "
                         "Erfordert die OBC-Auswahl **3-phasig**."), entity))
@@ -209,7 +240,8 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
                     continue
                 button = _condition(button, strategy, "Manuell")
             right.append(button)
-    if g1 and any(e.get(key) for key in ("charge_mode_select", "start", "stop")):
+    if (g1 and any(e.get(key) for key in ("charge_mode_select", "start", "stop"))
+            and not any(e.get(f"time_period_{i}_mode") for i in indices)):
         right.append(_help("Ladesteuerung erklärt",
             "Der Lademodus gilt für beide Zeitfenster. Start/Stopp erscheint, "
             "wenn die Bridge die Aktion für den gemeldeten Status freigibt."))
@@ -248,6 +280,10 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
     history["sections"].append(_section(graphs, wide=True))
 
     intro = [_heading("Zeitgesteuertes Aufladen", "mdi:calendar-clock")]
+    if g1 and (mode := e.get("charge_mode_select")) and not any(
+            e.get(f"time_period_{i}_mode") for i in indices):
+        intro.append(_available(_tile(mode, "Lademodus (für beide Zeitfenster)", feature="select-options"), mode))
+        intro.append(_available(_mode_help(), mode))
     if strategy:
         intro.append(_available(_tile(strategy, "Ladeeinstellung", feature="select-options"), strategy))
     if strategy:
