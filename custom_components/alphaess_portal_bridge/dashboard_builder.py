@@ -168,6 +168,22 @@ def _unavailable_controls(entities: dict[str, str], profile: str | None) -> dict
             'entity_id': buttons + ([strategy] if strategy else [])}
 
 
+def _diagnosis_warning(entity: str) -> dict:
+    target = json.dumps(entity)
+    template = (
+        f"{{% if is_state({target}, 'Wallbox meldet Störung') %}}"
+        "> ⚠️ **Wallbox meldet Störung**\n> "
+        f"{{{{ state_attr({target}, 'Fehlerhinweis') or 'Details unter Einstellungen → Wallbox-Diagnose.' }}}}"
+        f"{{% elif is_state({target}, 'Keine Statusrückmeldung') %}}"
+        "> ⚠️ **Keine Statusrückmeldung**\n> Das Portal antwortet ohne Wallbox-Statusangabe."
+        f"{{% elif is_state({target}, 'Geräteverbindung getrennt gemeldet') %}}"
+        "> ⚠️ **Geräteverbindung getrennt gemeldet**"
+        f"{{% elif is_state({target}, 'Status nicht aktuell prüfbar') %}}"
+        "> ℹ️ Wallboxstatus derzeit nicht aktuell prüfbar."
+        "{% endif %}")
+    return {**_note(template), 'show_empty': False, 'entity_id': [entity]}
+
+
 def _section(cards: list, *, wide: bool = False) -> dict:
     section = {"type": "grid", "cards": [card for card in cards if card]}
     if wide:
@@ -213,10 +229,13 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
                      "grid_options": {"columns": 12, "rows": 3}})
     if api := e.get("api_connection"):
         left.append(_condition(_note("> ⚠️ **Bridge-Verbindung prüfen**\n> Aktuelle Messwerte und Steuerbefehle können eingeschränkt sein."), api, "Verbunden", invert=True))
+    if diagnosis := e.get('diagnosis'):
+        left.append(_diagnosis_warning(diagnosis))
     if entity := e.get("status"):
-        left += [_condition(_note("> ⚠️ **Keine Kommunikation zwischen Wallbox und Energiespeichersystem**"), entity,
-                            "Keine Kommunikation zwischen Wallbox und Energiespeichersystem"),
-                 _tile(entity, "Status", icon="mdi:ev-station")]
+        if not diagnosis:
+            left.append(_condition(_note("> ⚠️ **Keine Kommunikation zwischen Wallbox und Energiespeichersystem**"), entity,
+                                   "Keine Kommunikation zwischen Wallbox und Energiespeichersystem"))
+        left.append(_tile(entity, "Status", icon="mdi:ev-station"))
     energy_count = sum(bool(e.get(key)) for key in ('today_energy', 'last_energy'))
     for key, name, icon in (("today_energy", "Heute geladen", "mdi:calendar-today"),
                             ("last_energy", "Ladesitzung", "mdi:ev-plug-type2")):
@@ -383,6 +402,14 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
                 options.append(_available(_help("Hausstrom-Einstellung erklärt",
                     "Anschlussgrenze des Hauses, kein Ladestrom-Sollwert."), entity))
     info = [_heading("Gerät und Diagnose", "mdi:information-outline")]
+    if api:
+        info.append(_tile(api, 'Portal-Verbindung', icon='mdi:cloud-check'))
+    if diagnosis:
+        info.append(_tile(diagnosis, 'Wallbox-Diagnose', icon='mdi:stethoscope'))
+        info.append(_help('Diagnose erklärt',
+            'Portal-Verbindung, Statusrückmeldung und gemeldete Störung werden getrennt bewertet. '
+            'Details und Rohcode öffnest du über die Diagnosekachel. '
+            'Fehlende Statusangaben belegen keinen bestimmten RS485-Defekt.'))
     details = [{"entity": e[key], "name": name} for key, name in (
         ("information_model", "Modell"), ("portal_profile", "Portal-Profil"),
         ("information_sn", "Serialnummer"), ("information_softwareVersion", "Software"),

@@ -37,7 +37,7 @@ EXPORT_PATH = f"/api/{DOMAIN}/dashboard/export"
 # name, area name, translation, system serial or account identifier is guessed.
 ENTITY_DOMAINS = {
     **{key: "sensor" for key in (
-        "status", "api_connection", "power", "vehicle_connected", "gun_locked", "mode",
+        "status", "api_connection", "diagnosis", "power", "vehicle_connected", "gun_locked", "mode",
         "today_energy", "last_energy", "portal_profile", "information_model",
         "information_sn", "information_softwareVersion", "information_hardwareVersion",
         "information_phase", "information_startUpPower")},

@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from .api import AlphaESSPortalApi
 from .schedule import g1t_schedule_schema_matches, strategy_supported
 from .const import DOMAIN
+from .wallbox_diagnosis import coordinator_diagnosis, public_diagnosis, public_write_feedback
 
 # Exact known schema fields only. Unknown fields are never exported.
 _WALLBOX_FIELDS = (
@@ -161,7 +162,7 @@ async def async_get_config_entry_diagnostics(
     advanced = time.monotonic() <= coordinator._advanced_diagnostics_until
     coordinator._advanced_diagnostics_until = 0.0
     result = {
-        "diagnostics_schema": 2,
+        "diagnostics_schema": 3,
         "privacy": {
             "mode": "allowlist_values_and_filtered_diagnostic_keys",
             "contains_raw_api_responses": False,
@@ -169,6 +170,8 @@ async def async_get_config_entry_diagnostics(
             "contains_charge_history_values": False,
         },
         "portal_profile": generation if generation in ("g1T", "g2T") else "unknown",
+        "health_summary": public_diagnosis(coordinator_diagnosis(coordinator, wallbox)),
+        "settings_transfer_status": public_write_feedback(coordinator.api),
         "integration": {
             "configuration_interval_seconds": int(coordinator.update_interval.total_seconds())
             if coordinator.update_interval else None,
