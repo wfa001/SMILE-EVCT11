@@ -75,6 +75,8 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._live_revision = 0
         self._latest_live_status: dict[str, Any] | None = None
         self.api.set_settings_written_callback(self._schedule_followup_refresh)
+        if feedback := getattr(self.api, 'settings_feedback', None):
+            feedback.set_listener(self.async_update_listeners)
 
     @property
     def api_connection_status(self) -> str:
@@ -241,12 +243,16 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Prevent scheduled API traffic after the config entry is unloaded."""
         self._stopped = True
         self.api.set_settings_written_callback(None)
+        if feedback := getattr(self.api, 'settings_feedback', None):
+            feedback.set_listener(None)
         if self._cancel_followup_refresh is not None:
             self._cancel_followup_refresh()
             self._cancel_followup_refresh = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         revision = self._live_revision
+        feedback = getattr(self.api, 'settings_feedback', None)
+        write_revision = feedback.revision if feedback else None
         started = time.monotonic()
         try:
             refreshed = await self.api.async_get_wallbox_data()
@@ -257,9 +263,18 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "wallbox_status": self._latest_live_status,
                     "wallbox_status_source": "real_status",
                 }
-            self._full_success_count += 1
-            self._last_full_success = datetime.now(timezone.utc)
-            self._full_consecutive_errors = 0
+            if refreshed.get('configuration_read_ok', True):
+                self._full_success_count += 1
+                self._last_full_success = datetime.now(timezone.utc)
+                self._full_consecutive_errors = 0
+                if feedback is not None and not self._stopped:
+                    wallbox = self.api._find_wallbox_data(
+                        refreshed.get('configuration'), refreshed.get('wallbox_serial'))
+                    feedback.observe(wallbox, write_revision)
+            else:
+                # A successful system/live reply cannot refresh failed settings.
+                self._full_failure_count += 1
+                self._full_consecutive_errors += 1
             return refreshed
         except AuthenticationError as err:
             self._full_failure_count += 1

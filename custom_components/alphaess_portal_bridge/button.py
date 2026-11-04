@@ -21,6 +21,7 @@ from .api import AuthenticationError, PortalConnectionError
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
 from .entity import AlphaESSWallboxEntity
+from .control_feedback import control_reason
 
 
 async def async_setup_entry(
@@ -45,6 +46,14 @@ class AlphaESSWallboxControlButton(AlphaESSWallboxEntity, ButtonEntity):
         super().__init__(coordinator, entry, control.lower())
         self._control = control
         self._attr_name = "Laden starten" if control == "START" else "Laden stoppen"
+
+    @property
+    def extra_state_attributes(self):
+        status = (self.coordinator.data or {}).get('wallbox_status')
+        return {'Bedienhinweis': control_reason(
+            self._control, self.settings_generation, self.settings,
+            status.get('status') if isinstance(status, dict) else None,
+            self.coordinator.last_update_success)}
 
     @property
     def available(self) -> bool:

@@ -26,6 +26,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
 from .schedule import schedule_supported, strategy_supported
+from .write_feedback import SettingsWriteFeedback, settings_targets
 
 from .const import (
     API_URL,
@@ -94,7 +95,11 @@ def _serialize_settings_write(method):
                 # The user requested a newer current while this call waited.
                 # Only drop a request which never began its portal transaction.
                 return
-            return await method(self, *args, **kwargs)
+            self._settings_request_context = (method.__name__, args, kwargs)
+            try:
+                return await method(self, *args, **kwargs)
+            finally:
+                self._settings_request_context = None
 
     return wrapped
 
@@ -118,6 +123,8 @@ class AlphaESSPortalApi:
         self._live_status_unavailable_serials: set[str] = set()
         self._charge_current_request_id = 0
         self._settings_written_callback: Callable[[], None] | None = None
+        self.settings_feedback = SettingsWriteFeedback()
+        self._settings_request_context = None
         self._username = config[CONF_USERNAME]
         self._password = config[CONF_PASSWORD]
         self._system_serial = config[CONF_SYSTEM_SERIAL]
@@ -182,8 +189,10 @@ class AlphaESSPortalApi:
                 f"/internal/v1/ess/{self._system_serial}",
                 step="wallbox configuration",
             )
+            configuration_read_ok = isinstance(configuration, (dict, list))
         except PortalConnectionError:
             configuration = {}
+            configuration_read_ok = False
 
         wallbox_serial = (
             self._wallbox_serial
@@ -225,6 +234,7 @@ class AlphaESSPortalApi:
         return {
             "system": system,
             "configuration": configuration,
+            "configuration_read_ok": configuration_read_ok,
             "wallbox_serial": wallbox_serial,
             "wallbox_status": wallbox_status,
             "wallbox_status_source": wallbox_status_source,
@@ -728,6 +738,12 @@ class AlphaESSPortalApi:
 
     async def _async_authenticated_patch(self, path: str, data: dict[str, Any], *, step: str) -> None:
         await self._async_token()
+        feedback = getattr(self, 'settings_feedback', None)
+        ticket = None
+        if feedback is not None:
+            targets = settings_targets(getattr(self, '_settings_request_context', None),
+                                       self._find_wallbox_data(data, self._wallbox_serial))
+            ticket = feedback.begin(targets)
         try:
             async with self._session.patch(
                 f"{self._api_url}{path}",
@@ -736,9 +752,15 @@ class AlphaESSPortalApi:
                 timeout=aiohttp.ClientTimeout(total=20),
             ) as response:
                 if response.status in (401, 403):
+                    if feedback is not None:
+                        feedback.failed(ticket, rejected=True)
                     raise self._reject_authentication(step, response.status)
                 if response.status not in (200, 201, 204):
+                    if feedback is not None:
+                        feedback.failed(ticket, rejected=400 <= response.status < 500)
                     raise PortalConnectionError(response.status, step)
+                if feedback is not None:
+                    feedback.accepted(ticket)
                 if self._settings_written_callback is not None:
                     # The portal accepted the write, but the physical wallbox
                     # may take another 20–30 seconds to apply the setting.
@@ -750,7 +772,13 @@ class AlphaESSPortalApi:
                         # falsely report a failed write to Home Assistant.
                         _LOGGER.exception("Unable to schedule AlphaESS settings read-back")
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            if feedback is not None:
+                feedback.failed(ticket)
             raise PortalConnectionError from err
+        except BaseException:
+            if feedback is not None:
+                feedback.failed(ticket)
+            raise
 
     async def _async_get(
         self,

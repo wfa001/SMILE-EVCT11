@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 import time
+import runpy
 import unittest
 from unittest.mock import AsyncMock, Mock
 
@@ -61,6 +62,7 @@ class Session:
 
 
 API_NS = {
+    'SettingsWriteFeedback': runpy.run_path(str(ROOT / 'write_feedback.py'))['SettingsWriteFeedback'],
     "asyncio": asyncio, "time": time, "API_URL": "https://example.invalid/api",
     "PORTAL_HEADERS": {}, "CONF_USERNAME": "username", "CONF_PASSWORD": "password",
     "CONF_SYSTEM_SERIAL": "system_serial", "CONF_WALLBOX_SERIAL": "wallbox_serial",
