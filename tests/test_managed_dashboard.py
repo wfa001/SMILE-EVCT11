@@ -39,6 +39,8 @@ def adapter_namespace(hass=None):
         panels[kwargs['frontend_url_path']] = kwargs
     ns = {
         'Any': object, 'HomeAssistant': object,
+        'UnitOfEnergy': {'Wh','kWh','MWh','GWh','J','kJ','MJ','GJ'},
+        'get_recorder_instance': lambda h:h.data['test_recorder'],
         'logging': __import__('logging'), 'timedelta': __import__('datetime').timedelta,
         'DOMAIN': 'alphaess_portal_bridge', 'CONF_SYSTEM_SERIAL': 'system_serial',
         'MODE_YAML': 'yaml', 'LOVELACE_DATA': 'lovelace',
