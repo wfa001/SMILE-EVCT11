@@ -68,6 +68,7 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._full_failure_count = 0
         self._live_last_http_status: int | None = None
         self._last_live_success: datetime | None = None
+        self._last_status_success: datetime | None = None
         self._last_full_success: datetime | None = None
         self._last_api_error: str | None = None
         self._advanced_diagnostics_until: float = 0.0
@@ -86,11 +87,15 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if self._last_full_success else float("inf"))
         live_age = ((now - self._last_live_success).total_seconds()
                     if self._last_live_success else float("inf"))
+        status_stamp = getattr(self, '_last_status_success', None)
+        status_age = (now - status_stamp).total_seconds() if status_stamp else float('inf')
         full_limit = max(90, 3 * self.update_interval.total_seconds())
         live_expected = self._live_status_supported is True
         full_ok = full_age <= full_limit
         live_ok = live_expected and live_age <= 25
-        if not full_ok and not live_ok:
+        status_limit = 25 if live_expected else full_limit
+        status_ok = 0 <= status_age <= status_limit
+        if not full_ok and not live_ok and not status_ok:
             return "Getrennt"
         if (not full_ok or self._full_consecutive_errors
                 or self._live_refresh_errors
@@ -149,6 +154,7 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._last_live_success = datetime.now(timezone.utc)
             self._live_last_http_status = None
             if not self._stopped:
+                self._last_status_success = self._last_live_success
                 self._latest_live_status = status
                 self._live_revision += 1
                 self.data = {
@@ -263,6 +269,10 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "wallbox_status": self._latest_live_status,
                     "wallbox_status_source": "real_status",
                 }
+            elif (not self._stopped and isinstance(refreshed.get('wallbox_status'), dict)
+                    and refreshed.get('wallbox_status_source') in {'real_status', 'system'}):
+                # Track status replies separately from successful settings reads.
+                self._last_status_success = datetime.now(timezone.utc)
             if refreshed.get('configuration_read_ok', True):
                 self._full_success_count += 1
                 self._last_full_success = datetime.now(timezone.utc)

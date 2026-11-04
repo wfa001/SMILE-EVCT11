@@ -46,7 +46,7 @@ def load_helpers():
                     return profile, wallbox[profile]
             return None, None
 
-    namespace = {"re": re, "time": time, "Any": Any, "HomeAssistant": object, "ConfigEntry": object, "AlphaESSPortalApi": FakePortal, "DOMAIN": "alphaess_portal_bridge", **runpy.run_path(str(source.parent / "schedule.py"))}
+    namespace = {"re": re, "time": time, "Any": Any, "HomeAssistant": object, "ConfigEntry": object, "AlphaESSPortalApi": FakePortal, "DOMAIN": "alphaess_portal_bridge", **runpy.run_path(str(source.parent / "schedule.py")), **runpy.run_path(str(source.parent / 'wallbox_diagnosis.py'))}
     exec(compile(ast.fix_missing_locations(subset), str(source), "exec"), namespace)
     return namespace
 
