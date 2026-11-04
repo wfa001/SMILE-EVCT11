@@ -6,6 +6,7 @@ verified independently of a running Home Assistant instance.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from html import escape
 from typing import Any
 
 
@@ -31,6 +32,31 @@ def _heading(text: str, icon: str = "mdi:ev-station") -> dict:
 def _note(text: str) -> dict:
     return {"type": "markdown", "content": text,
             "grid_options": {"columns": "full", "rows": "auto"}}
+
+
+def _help(title: str, text: str) -> dict:
+    """Native, initially collapsed help; no helper entities or custom cards."""
+    return {**_note(f"<details>\n<summary>{escape(title)}</summary>\n\n{text}\n\n</details>"),
+            "text_only": True}
+
+
+def _mode_help() -> dict:
+    """Use the same concise explanation at global and per-period selectors."""
+    return _help("Lademodi erklärt",
+        "- **Langsamladung:** PV-Überschuss nach Haus und Speicher. "
+        "Der Speicher liefert keinen Strom fürs Auto.\n"
+        "- **Schonladung / Standardleistung:** PV und Speicher versorgen das Auto. "
+        "Der Hausverbrauch hat Vorrang.\n"
+        "- **Schnellladung:** PV und Speicher versorgen das Auto mit Vorrang "
+        "vor Hausverbrauch und Speicherladung.\n"
+        "- **Kundenspezifische Ladeleistung:** Lädt mit dem eingestellten Strom "
+        "je Phase. Fehlende Leistung wird aus dem Netz ergänzt.")
+
+
+def _current_help() -> dict:
+    return _help("Ladestrom erklärt",
+        "Maximaler Strom je Phase beim kundenspezifischen Laden. "
+        "Das Fahrzeug kann weniger aufnehmen.")
 
 
 def _tile(entity: str, name: str, *, icon: str | None = None,
@@ -147,17 +173,29 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
     strategy = e.get("charge_strategy_select")
     if strategy:
         right.append(_available(_tile(strategy, "Ladeeinstellung", feature="select-options"), strategy))
+        if g2:
+            right.append(_condition(_note(
+                f"Lademodi unter [Zeitfenster](/{url_path}/{paths['zeitfenster']}) einstellen. "
+                "Start/Stopp ist nur bei **Manuell** verfügbar."), strategy, "Zeitgesteuertes Aufladen"))
     if mode := e.get("charge_mode_select"):
         right.append(_available(_tile(mode, "Lademodus", feature="select-options"), mode))
+        right.append(_available(_mode_help(), mode))
     if current := e.get("custom_charge_current"):
         right.append(_available(_tile(current, "Ladestrom (kundenspezifisch)", feature="numeric-input"), current))
+        right.append(_available(_current_help(), current))
     if g2:
         for key, name, feature in (("obc_phase_select", "OBC Phasenwahl", "select-options"),
                                    ("smart_mode", "Smart Mode", "toggle")):
             if entity := e.get(key):
                 right.append(_available(_tile(entity, name, feature=feature), entity))
-        if strategy:
-            right.append(_condition(_note("Die Lademodi der Zeitfenster findest du unter **Zeitfenster**. Start/Stopp ist nur bei **Manuell** verfügbar."), strategy, "Zeitgesteuertes Aufladen"))
+                if key == "obc_phase_select":
+                    right.append(_available(_help("Phasenwahl erklärt",
+                        "Passend zum Ladegerät deines Fahrzeugs auswählen. "
+                        "Die Auswahl zeigt keine tatsächlich gemessenen Phasen."), entity))
+                elif key == "smart_mode":
+                    right.append(_available(_help("Smart Mode erklärt",
+                        "Wechselt bei Langsamladung automatisch zwischen einer und drei Phasen. "
+                        "Erfordert die OBC-Auswahl **3-phasig**."), entity))
     for key, name, icon in (("start", "Laden starten", "mdi:play"), ("stop", "Laden stoppen", "mdi:stop")):
         if entity := e.get(key):
             button = {"type": "button", "entity": entity, "name": name, "icon": icon,
@@ -171,8 +209,10 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
                     continue
                 button = _condition(button, strategy, "Manuell")
             right.append(button)
-    if g1:
-        right.append(_note("**G1T:** Globaler Lademodus, zwei Zeitfenster. Start/Stopp wird von der Bridge passend zum Gerätestatus freigegeben."))
+    if g1 and any(e.get(key) for key in ("charge_mode_select", "start", "stop")):
+        right.append(_help("Ladesteuerung erklärt",
+            "Der Lademodus gilt für beide Zeitfenster. Start/Stopp erscheint, "
+            "wenn die Bridge die Aktion für den gemeldeten Status freigibt."))
     status["sections"] += [_section(left), _section(right)]
 
     graphs = [_heading("Ladeverlauf", "mdi:chart-line"),
@@ -199,14 +239,28 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
                        "stat_types": ["change"], "min_y_axis": 0,
                        "grid_options": {"columns": "full", "rows": 5}})
     else:
-        graphs.append(_note("**Tagesenergie:** Noch kein aktivierter Energiesensor mit Summenstatistik verfügbar."))
-    graphs.append(_note("Modi und Phasenwahl sind gespeicherte Einstellungen. Zeitfenster-Freigaben zeigen Ein/Aus, keine tatsächlichen Ladezeiten. Tagesbalken benötigen Recorder-Statistiken; fehlende Vergangenheit wird nicht ergänzt. Cloud-Verzögerungen können die Tageszuordnung beeinflussen."))
+        graphs.append(_help("Warum fehlen die Tagesbalken?",
+            "Es ist noch kein aktivierter Energiesensor mit geeigneter Summenstatistik verfügbar."))
+    graphs.append(_help("Verlauf richtig lesen",
+        "Modi und Phasenwahl zeigen Einstellungen. Zeitfenster-Freigaben zeigen Ein/Aus, "
+        "keine tatsächlichen Ladezeiten. Tagesbalken nutzen gespeicherte Statistiken; "
+        "fehlende Vergangenheit wird nicht ergänzt. Cloud-Verzögerungen können die Tageszuordnung beeinflussen."))
     history["sections"].append(_section(graphs, wide=True))
 
     intro = [_heading("Zeitgesteuertes Aufladen", "mdi:calendar-clock")]
     if strategy:
         intro.append(_available(_tile(strategy, "Ladeeinstellung", feature="select-options"), strategy))
-    intro.append(_note("Ausgeschaltete Zeitfenster behalten ihre Uhrzeiten. Ohne vom Portal gemeldete Aktivierungsstrategie ist die tatsächliche Ausführung nicht bestätigt."))
+    if strategy:
+        intro.append(_condition(_note(
+            "Zum Verwenden der Zeitfenster **Zeitgesteuertes Aufladen** auswählen."),
+            strategy, "Manuell"))
+        intro.append(_condition(_note(
+            "Zum Verwenden der Zeitfenster **Zeitgesteuertes Aufladen** auswählen."),
+            strategy, "Plug and Play"))
+    if indices:
+        intro.append(_help("Zeitfenster erklärt",
+            "Ausgeschaltete Zeitfenster behalten ihre Uhrzeiten. "
+            "Der Status zeigt die Portal-Einstellung, keine tatsächlich laufende Ladung."))
     schedule["sections"].append(_section(intro, wide=True))
     for i in indices:
         period_cards = [_heading(f"Zeitrahmen {i}", "mdi:calendar-clock")]
@@ -216,8 +270,10 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
             {"entity": e[f"time_period_{i}_{boundary}"], "name": name} for boundary, name in (("start", "Beginn"), ("end", "Ende"))]})
         if entity := e.get(f"time_period_{i}_mode"):
             period_cards.append(_available(_tile(entity, f"Zeitrahmen {i} Lademodus", feature="select-options"), entity))
+            period_cards.append(_available(_mode_help(), entity))
         if entity := e.get(f"time_period_{i}_current"):
             period_cards.append(_available(_tile(entity, "Maximaler Strom", feature="numeric-input"), entity))
+            period_cards.append(_available(_current_help(), entity))
         period_cards.append(_note("**Zeitfenster-Status:** {{ state_attr('" + e[f"time_period_{i}_start"] + "', 'Zeitfenster-Status') or 'Keine bestätigten Angaben vom Portal' }}"))
         schedule["sections"].append(_section(period_cards))
     if not indices:
@@ -229,7 +285,9 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
                                ("installer_control_allowed", "Installateursteuerung erlaubt", None)):
         if entity := e.get(key):
             options.append(_available(_tile(entity, name, feature=feature), entity))
-    options.append(_note("Der Hausstromwert ist eine Installationseinstellung und nicht der kundenspezifische Ladestrom."))
+            if key == "household_current":
+                options.append(_available(_help("Hausstrom-Einstellung erklärt",
+                    "Anschlussgrenze des Hauses, kein Ladestrom-Sollwert."), entity))
     info = [_heading("Gerät und Diagnose", "mdi:information-outline")]
     details = [{"entity": e[key], "name": name} for key, name in (
         ("information_model", "Modell"), ("portal_profile", "Portal-Profil"),
@@ -241,7 +299,11 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
     if entity := e.get("advanced_diagnostics"):
         info.append({"type": "entities", "entities": [{"entity": entity, "name": "Erweiterte API-Diagnose freigeben"}]})
     if not export and box.export_url:
-        info.append(_note(f"### Eigenes Dashboard\n\n[Dashboard als Vorlage herunterladen]({box.export_url})\n\nDie YAML enthält die aktuellen Entitätszuordnungen dieser Wallbox. In einem eigenen Dashboard unter **Raw-Konfiguration** einfügen. Die Kopie wird nicht durch Bridge-Updates geändert. Der Downloadlink gilt zehn Minuten; bei Bedarf diese Ansicht neu laden."))
+        info.append(_note(f"[Dashboard als Vorlage herunterladen]({box.export_url})"))
+        info.append(_help("Vorlage verwenden",
+            "In einem eigenen Dashboard unter **Raw-Konfiguration** einfügen. "
+            "Die Kopie bleibt unabhängig von Bridge-Updates. "
+            "Der Link gilt zehn Minuten; danach diese Ansicht neu laden."))
     settings["sections"] += [_section(options), _section(info)]
     return views
 
