@@ -43,10 +43,11 @@
   "options": {
     "step": {
       "init": {
-        "title": "Update interval",
+        "title": "Bridge options",
         "description": "Only multiples of 30 seconds from 30 to 300 seconds are allowed. Defaults: G1T 120 seconds, G2T 30 seconds.",
         "data": {
-          "update_interval_seconds": "Refresh every (seconds)"
+          "update_interval_seconds": "Refresh every (seconds)",
+          "show_dashboard": "Show Wallbox Bridge dashboard"
         }
       }
     }

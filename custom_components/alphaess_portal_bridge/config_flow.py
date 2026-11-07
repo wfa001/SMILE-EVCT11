@@ -14,6 +14,7 @@ from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -23,6 +24,7 @@ from .api import AlphaESSPortalApi, AuthenticationError, PortalConnectionError
 from .const import (
     CONF_AUTHENTICATION_PAUSED,
     CONF_PASSWORD,
+    CONF_SHOW_DASHBOARD,
     CONF_SYSTEM_SERIAL,
     CONF_UPDATE_INTERVAL,
     CONF_USERNAME,
@@ -174,7 +176,7 @@ def _default_update_interval(hass: Any, entry: config_entries.ConfigEntry) -> in
 
 
 class AlphaESSPortalBridgeOptionsFlow(config_entries.OptionsFlowWithReload):
-    """Configure the portal refresh interval without changing credentials."""
+    """Configure the refresh interval and dashboard visibility."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
@@ -199,6 +201,10 @@ class AlphaESSPortalBridgeOptionsFlow(config_entries.OptionsFlowWithReload):
                             mode=NumberSelectorMode.BOX,
                         )
                     ),
+                    vol.Required(
+                        CONF_SHOW_DASHBOARD,
+                        default=self.config_entry.options.get(CONF_SHOW_DASHBOARD, True),
+                    ): BooleanSelector(),
                 }
             ),
         )
