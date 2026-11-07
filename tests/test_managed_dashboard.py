@@ -4,6 +4,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import json
+import runpy
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -51,6 +52,7 @@ def adapter_namespace(hass=None):
         'settings_object': lambda c:(c.profile,c.settings),
         'schedule_supported': schedule.schedule_supported,
         'strategy_supported': schedule.strategy_supported,
+        'supported_dashboard_controls': runpy.run_path(str(ROOT / 'dashboard_capabilities.py'))['supported_dashboard_controls'],
         'WallboxDashboard': builder.WallboxDashboard, 'build_dashboard': builder.build_dashboard,
         'async_sign_path': lambda h,p,expiry:p+'?authSig=TEST-SECRET-SIGNATURE',
         'cached_json_fragment': lambda obj:obj,
@@ -116,7 +118,7 @@ class DashboardTests(unittest.TestCase):
     def test_g1t_only_exposes_confirmed_two_periods_and_global_mode(self):
         ns=adapter_namespace()
         entities={k:f'{domain}.renamed_{k}' for k,domain in ns['ENTITY_DOMAINS'].items()}
-        settings={'timePeriods':[period(),period()]}
+        settings={'chargeMode':2,'timePeriods':[period(),period()]}
         filtered=ns['filter_capabilities'](entities,'g1T',settings)
         config=builder.build_dashboard([builder.WallboxDashboard('A','Garage','g1T',filtered,settings)])
         text=json.dumps(config)
