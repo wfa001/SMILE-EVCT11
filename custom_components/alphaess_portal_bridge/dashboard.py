@@ -21,7 +21,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.json import cached_json_fragment
 
-from .const import CONF_SYSTEM_SERIAL, DOMAIN
+from .const import CONF_SHOW_DASHBOARD, CONF_SYSTEM_SERIAL, DOMAIN
 from .dashboard_builder import WallboxDashboard, build_dashboard
 from .entity import settings_object
 from .schedule import schedule_supported, strategy_supported
@@ -245,7 +245,10 @@ class DashboardManager:
 
 
 async def async_setup_dashboard(hass: HomeAssistant, entry, coordinator) -> None:
-    """Keep a dashboard compatibility failure separate from charging control."""
+    """Register this wallbox if its managed dashboard is enabled."""
+    if not entry.options.get(CONF_SHOW_DASHBOARD, True):
+        return
+
     try:
         manager = hass.data.get(DATA_MANAGER)
         if manager is None:

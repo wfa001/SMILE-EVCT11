@@ -43,10 +43,11 @@
   "options": {
     "step": {
       "init": {
-        "title": "Aktualisierungsintervall",
+        "title": "Bridge-Optionen",
         "description": "Nur Vielfache von 30 Sekunden zwischen 30 und 300 Sekunden sind erlaubt. Standard: G1T 120 Sekunden, G2T 30 Sekunden.",
         "data": {
-          "update_interval_seconds": "Aktualisierung alle (Sekunden)"
+          "update_interval_seconds": "Aktualisierung alle (Sekunden)",
+          "show_dashboard": "Wallbox-Bridge-Dashboard anzeigen"
         }
       }
     }
