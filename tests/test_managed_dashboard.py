@@ -40,6 +40,7 @@ def adapter_namespace(hass=None):
         'Any': object, 'HomeAssistant': object,
         'logging': __import__('logging'), 'timedelta': __import__('datetime').timedelta,
         'DOMAIN': 'alphaess_portal_bridge', 'CONF_SYSTEM_SERIAL': 'system_serial',
+        'CONF_SHOW_DASHBOARD': 'show_dashboard',
         'MODE_YAML': 'yaml', 'LOVELACE_DATA': 'lovelace',
         'callback': lambda fn: fn, 'LovelaceConfig': Base, 'HomeAssistantView': object,
         'frontend': SimpleNamespace(async_panel_exists=lambda h,p:p in panels,
@@ -260,6 +261,44 @@ class DashboardTests(unittest.TestCase):
         ns=adapter_namespace()
         self.assertTrue(ns['DashboardExportView'].requires_auth)
         self.assertIn('{entry_id}',ns['DashboardExportView'].url)
+
+
+class DashboardOptionsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_dashboard_opt_out_across_entry_reloads(self):
+        ns = adapter_namespace()
+        hass = fake_hass()
+        setup = ns['async_setup_dashboard']
+        unload = ns['async_unload_dashboard']
+        a = entry()
+        a.options = {'show_dashboard': False}
+        b = entry('entry-B', 'system-B')
+        b.options = {}
+        g1t = coordinator('g1T', {})
+        g2t = coordinator('g2T', {})
+
+        await setup(hass, a, g1t)
+        self.assertFalse(ns['panels'])
+        self.assertNotIn(ns['DATA_MANAGER'], hass.data)
+
+        await setup(hass, b, g2t)
+        manager = hass.data[ns['DATA_MANAGER']]
+        self.assertEqual(set(manager.entries), {'entry-B'})
+
+        a.options = {'show_dashboard': True}
+        await setup(hass, a, g1t)
+        self.assertEqual(set(manager.entries), {'entry-A', 'entry-B'})
+
+        unload(hass, b.entry_id)
+        b.options = {'show_dashboard': False}
+        await setup(hass, b, g2t)
+        self.assertEqual(set(manager.entries), {'entry-A'})
+        self.assertIn(manager.url_path, ns['panels'])
+
+        unload(hass, a.entry_id)
+        a.options = {'show_dashboard': False}
+        await setup(hass, a, g1t)
+        self.assertFalse(ns['panels'])
+        self.assertNotIn(ns['DATA_MANAGER'], hass.data)
 
 
 if __name__=='__main__':unittest.main()

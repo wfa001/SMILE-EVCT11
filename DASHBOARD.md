@@ -32,6 +32,15 @@ Wallboxauswahl. Jede Wallbox hat eigene Ansichten und ausschließlich ihre eigen
 Entitätsreferenzen. Die bestehende Bridge verwaltet ein Gerät je Konfiguration;
 der Entwurf erweitert nicht die Erkennung mehrerer Ladegeräte am selben ESS.
 
+## Automatisches Dashboard abschalten
+
+Unter **Einstellungen → Geräte & Dienste → AlphaESS Wallbox Bridge → Optionen**
+lässt sich **Wallbox-Bridge-Dashboard anzeigen** pro Integrationseintrag
+abschalten und wieder einschalten. Nach dem Speichern lädt Home Assistant den
+Eintrag neu. Der Seitenleisteneintrag verschwindet, wenn das Dashboard für alle
+Wallboxen abgeschaltet ist. Die Entitäten können weiter in eigenen Dashboards
+und Automationen verwendet werden.
+
 ## Eigenes Dashboard
 
 1. Unter **Einstellungen → Eigenes Dashboard** die Vorlage herunterladen.
