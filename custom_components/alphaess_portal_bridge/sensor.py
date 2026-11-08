@@ -254,8 +254,9 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         if not isinstance(status, dict):
             return None
         value = self._energy_value(data, status)
-        if _LOGGER.isEnabledFor(logging.DEBUG):
-            self._trace_energy(data, status, value)
+        history = getattr(getattr(self.coordinator, "api", None), "history", None)
+        if _LOGGER.isEnabledFor(logging.DEBUG) or (history and history.enabled):
+            self._trace_energy(data, status, value, history)
         else:
             self._last_energy_trace = None
         return value
@@ -287,7 +288,7 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
             return None
 
     def _trace_energy(
-        self, data: dict[str, Any], status: dict[str, Any], value: float | None
+        self, data: dict[str, Any], status: dict[str, Any], value: float | None, history
     ) -> None:
         """Log changes to the selected API field and its resulting sensor value."""
         raw = status.get(self._key)
@@ -311,6 +312,10 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         trace = (source, wallbox_status, field, value)
         if trace != self._last_energy_trace:
             self._last_energy_trace = trace
+            if history:
+                history.record("bridge", event="energy_sensor", field=self._key,
+                               source=source, status=wallbox_status, input=field,
+                               sensor_kwh=value)
             _LOGGER.debug(
                 "Wallbox energy %s: source=%s status=%s api=%s sensor_kWh=%r",
                 self._key, *trace,

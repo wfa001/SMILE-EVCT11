@@ -14,13 +14,19 @@ from datetime import timedelta
 
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
-from homeassistant.const import Platform
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.event import async_track_time_interval
 
 from .api import AlphaESSPortalApi
+from .api_history import ApiHistory, purge_expired_archives, remove_archive
 from .const import (
+    CONF_PASSWORD,
+    CONF_RECORD_API_HISTORY,
     CONF_SYSTEM_SERIAL,
+    CONF_USERNAME,
+    CONF_WALLBOX_SERIAL,
     CONF_UPDATE_INTERVAL,
     DEFAULT_G2T_UPDATE_INTERVAL_SECONDS,
     DEFAULT_UPDATE_INTERVAL_SECONDS,
@@ -28,6 +34,7 @@ from .const import (
     UPDATE_INTERVAL_OPTIONS,
 )
 from .coordinator import AlphaESSWallboxCoordinator
+from .diagnostics_archive import DiagnosticsArchiveView
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,7 +65,14 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, object]) -> bool:
-    """Register the profile images served to the Home Assistant frontend."""
+    """Register profile images and the advanced diagnostics download."""
+    hass.http.register_view(DiagnosticsArchiveView(hass))
+
+    async def prune_history(_now=None) -> None:
+        await hass.async_add_executor_job(purge_expired_archives, hass.config.path(".storage"))
+
+    await prune_history()
+    async_track_time_interval(hass, prune_history, timedelta(hours=1))
     image_dir = Path(__file__).parent
     await hass.http.async_register_static_paths(
         [
@@ -86,6 +100,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, object]) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a validated portal session without exposing credentials."""
     api = AlphaESSPortalApi(hass, dict(entry.data))
+    api.history = ApiHistory(
+        hass, entry.entry_id, entry.options.get(CONF_RECORD_API_HISTORY, True),
+        tuple(entry.data.get(key, "") for key in (CONF_SYSTEM_SERIAL, CONF_WALLBOX_SERIAL, CONF_USERNAME)),
+        entry.data[CONF_PASSWORD],
+    )
+    api.history.record("bridge", event="recording_started")
     coordinator = AlphaESSWallboxCoordinator(
         hass,
         api,
@@ -96,6 +116,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await coordinator.async_config_entry_first_refresh()
     except ConfigEntryNotReady:
+        await api.history.async_close()
         raise
     configured_interval = entry.options.get(CONF_UPDATE_INTERVAL)
     if configured_interval not in UPDATE_INTERVAL_OPTIONS:
@@ -175,6 +196,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.config_entries.async_update_entry(entry, title=desired_title)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     coordinator.start_live_polling()
+    entry.async_on_unload(async_track_time_interval(
+        hass, api.history.async_flush, timedelta(seconds=10)
+    ))
+    entry.async_on_unload(hass.bus.async_listen_once(
+        EVENT_HOMEASSISTANT_STOP, api.history.async_close
+    ))
     try:
         from .dashboard import async_setup_dashboard
 
@@ -198,4 +225,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if coordinator is not None:
             coordinator.stop_followup_refresh()
             coordinator.stop_live_polling()
+            await coordinator.api.history.async_close()
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove local diagnostics when the user deletes the Bridge entry."""
+    try:
+        await hass.async_add_executor_job(remove_archive, hass.config.path(".storage"), entry.entry_id)
+    except OSError:
+        _LOGGER.warning("Could not remove local AlphaESS API diagnostics history")

@@ -16,6 +16,7 @@
   "dependencies": [
     "frontend",
     "http",
-    "lovelace"
+    "lovelace",
+    "persistent_notification"
   ]
 }

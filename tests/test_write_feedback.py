@@ -6,6 +6,7 @@ import asyncio
 import copy
 from pathlib import Path
 import runpy
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock
@@ -97,7 +98,7 @@ class FeedbackTests(unittest.TestCase):
 tree = ast.parse((ROOT / 'api.py').read_text())
 api_class = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'AlphaESSPortalApi')
 patch_method = next(n for n in api_class.body if isinstance(n, ast.AsyncFunctionDef) and n.name == '_async_authenticated_patch')
-namespace = {'Any': object, 'asyncio': asyncio, 'settings_targets': targets,
+namespace = {'Any': object, 'asyncio': asyncio, 'time': time, 'settings_targets': targets,
              'aiohttp': SimpleNamespace(ClientTimeout=lambda **kw: None, ClientError=ConnectionError),
              'PortalConnectionError': PortalConnectionError, 'PORTAL_HEADERS': {},
              '_LOGGER': SimpleNamespace(exception=lambda *a: None)}

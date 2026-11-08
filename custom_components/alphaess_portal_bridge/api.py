@@ -109,6 +109,7 @@ class AlphaESSPortalApi:
 
     def __init__(self, hass: HomeAssistant, config: dict[str, Any]) -> None:
         self._session = async_get_clientsession(hass)
+        self.history = None
         self._token_lock = asyncio.Lock()
         self._authentication_error: AuthenticationError | None = (
             AuthenticationError("reauthentication required")
@@ -167,6 +168,8 @@ class AlphaESSPortalApi:
                 and self._live_status_cache is not None
                 and time.monotonic() - self._live_status_cached_at < 3
             ):
+                if history := getattr(self, "history", None):
+                    history.record("bridge", event="cache_hit", step="wallbox status")
                 return copy.deepcopy(self._live_status_cache)
             status = await self._async_get(
                 f"/internal/v1/ev-charger/{wallbox_serial}/real-status",
@@ -199,6 +202,8 @@ class AlphaESSPortalApi:
             or self._find_wallbox_serial(configuration)
             or self._find_wallbox_serial(system)
         )
+        if history := getattr(self, "history", None):
+            history.add_identifier(wallbox_serial)
         wallbox_status = self._find_wallbox_data(system, wallbox_serial)
         wallbox_status_source = "system"
 
@@ -249,6 +254,8 @@ class AlphaESSPortalApi:
             self._report_cache_date == today
             and time.monotonic() < self._report_cache_until
         ):
+            if history := getattr(self, "history", None):
+                history.record("bridge", event="cache_hit", step="charge report")
             return self._report_items_cache
 
         # pageSize=10 is known to be accepted by the G2T portal.  Continue
@@ -317,6 +324,9 @@ class AlphaESSPortalApi:
         """Send a guarded start or stop request to the wallbox."""
         if control not in {"START", "STOP"}:
             raise ValueError("Nicht unterstützter Wallbox-Befehl")
+        history = getattr(self, "history", None)
+        if history:
+            history.record("control", event="requested", control=control)
         wallbox_serial = self._wallbox_serial
         if not wallbox_serial:
             raise PortalConnectionError(step="wallbox control")
@@ -334,6 +344,8 @@ class AlphaESSPortalApi:
         generation, settings = self._settings_from_wallbox(wallbox)
         if generation == "g2T" and settings is not None:
             if settings.get("chargeStrategy") != 0:
+                if history:
+                    history.record("control", event="blocked", control=control, reason="manual strategy required")
                 raise ValueError(
                     "Laden starten/stoppen ist nur bei Ladeeinstellung Manuell möglich"
                 )
@@ -349,6 +361,8 @@ class AlphaESSPortalApi:
             else {"Charging", "WaitingForChargingPile"}
         )
         if status not in allowed:
+            if history:
+                history.record("control", event="blocked", control=control, reason="wallbox status", status=status)
             raise PortalConnectionError(step="wallbox control blocked")
         await self._async_authenticated_post(
             f"/internal/v1/ev-charger/{wallbox_serial}/events",
@@ -720,8 +734,27 @@ class AlphaESSPortalApi:
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise PortalConnectionError from err
 
+    @staticmethod
+    async def _history_response_body(response) -> dict[str, Any]:
+        """Read optional JSON for diagnostics without changing HTTP handling."""
+        if response.status in (401, 403, 204):
+            return {}
+        try:
+            return {"response": await response.json(content_type=None)}
+        except (ValueError, aiohttp.ClientError, asyncio.TimeoutError):
+            return {"response_body": "not available as JSON"}
+
     async def _async_authenticated_post(self, path: str, data: dict[str, Any], *, step: str) -> None:
-        await self._async_token()
+        history = getattr(self, "history", None)
+        started = time.monotonic()
+        event = {"method": "POST", "endpoint": path, "step": step, "request": data}
+        try:
+            await self._async_token()
+        except (AuthenticationError, PortalConnectionError) as err:
+            if history:
+                history.record("control", **event, error=type(err).__name__,
+                               stage=err.step, http_status=err.status)
+            raise
         try:
             async with self._session.post(
                 f"{self._api_url}{path}",
@@ -729,15 +762,31 @@ class AlphaESSPortalApi:
                 headers={**PORTAL_HEADERS, "Authorization": self._token},
                 timeout=aiohttp.ClientTimeout(total=20),
             ) as response:
+                if history and history.enabled:
+                    history.record("control", **event, http_status=response.status,
+                                   duration_ms=round((time.monotonic() - started) * 1000),
+                                   **await self._history_response_body(response))
                 if response.status in (401, 403):
                     raise self._reject_authentication(step, response.status)
                 if response.status not in (200, 201, 204):
                     raise PortalConnectionError(response.status, step)
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            if history:
+                history.record("control", **event, error=type(err).__name__,
+                               duration_ms=round((time.monotonic() - started) * 1000))
             raise PortalConnectionError from err
 
     async def _async_authenticated_patch(self, path: str, data: dict[str, Any], *, step: str) -> None:
-        await self._async_token()
+        history = getattr(self, "history", None)
+        started = time.monotonic()
+        event = {"method": "PATCH", "endpoint": path, "step": step, "request": data}
+        try:
+            await self._async_token()
+        except (AuthenticationError, PortalConnectionError) as err:
+            if history:
+                history.record("control", **event, error=type(err).__name__,
+                               stage=err.step, http_status=err.status)
+            raise
         feedback = getattr(self, 'settings_feedback', None)
         ticket = None
         if feedback is not None:
@@ -751,6 +800,10 @@ class AlphaESSPortalApi:
                 headers={**PORTAL_HEADERS, "Authorization": self._token},
                 timeout=aiohttp.ClientTimeout(total=20),
             ) as response:
+                if history and history.enabled:
+                    history.record("control", **event, http_status=response.status,
+                                   duration_ms=round((time.monotonic() - started) * 1000),
+                                   **await self._history_response_body(response))
                 if response.status in (401, 403):
                     if feedback is not None:
                         feedback.failed(ticket, rejected=True)
@@ -772,6 +825,9 @@ class AlphaESSPortalApi:
                         # falsely report a failed write to Home Assistant.
                         _LOGGER.exception("Unable to schedule AlphaESS settings read-back")
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            if history:
+                history.record("control", **event, error=type(err).__name__,
+                               duration_ms=round((time.monotonic() - started) * 1000))
             if feedback is not None:
                 feedback.failed(ticket)
             raise PortalConnectionError from err
@@ -787,7 +843,16 @@ class AlphaESSPortalApi:
         params: dict[str, Any] | None = None,
         step: str,
     ) -> dict[str, Any]:
-        await self._async_token()
+        history = getattr(self, "history", None)
+        started = time.monotonic()
+        event = {"method": "GET", "endpoint": path, "step": step, "request": params}
+        try:
+            await self._async_token()
+        except (AuthenticationError, PortalConnectionError) as err:
+            if history:
+                history.record("api", **event, error=type(err).__name__,
+                               stage=err.step, http_status=err.status)
+            raise
         try:
             async with self._session.get(
                 f"{self._api_url}{path}",
@@ -795,10 +860,26 @@ class AlphaESSPortalApi:
                 headers={**PORTAL_HEADERS, "Authorization": self._token},
                 timeout=aiohttp.ClientTimeout(total=20),
             ) as response:
+                if history and history.enabled and response.status != 200:
+                    history.record("api", **event, http_status=response.status,
+                                   duration_ms=round((time.monotonic() - started) * 1000),
+                                   **await self._history_response_body(response))
                 if response.status in (401, 403):
                     raise self._reject_authentication(step, response.status)
                 if response.status != 200:
                     raise PortalConnectionError(response.status, step)
-                return await response.json()
+                try:
+                    payload = await response.json()
+                except (ValueError, aiohttp.ContentTypeError):
+                    if history:
+                        history.record("api", **event, http_status=response.status, error="invalid JSON")
+                    raise
+                if history:
+                    history.record("api", **event, http_status=response.status, response=payload,
+                                   duration_ms=round((time.monotonic() - started) * 1000))
+                return payload
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            if history:
+                history.record("api", **event, error=type(err).__name__,
+                               duration_ms=round((time.monotonic() - started) * 1000))
             raise PortalConnectionError from err

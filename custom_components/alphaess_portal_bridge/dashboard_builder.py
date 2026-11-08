@@ -23,6 +23,7 @@ class WallboxDashboard:
     power_unit: str = "W"
     energy_statistics: bool = False
     export_url: str | None = None
+    diagnostics_url: str | None = None
 
 
 def _heading(text: str, icon: str = "mdi:ev-station") -> dict:
@@ -381,6 +382,10 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
         info.append({"type": "entities", "title": "Geräteinformationen", "entities": details})
     if entity := e.get("advanced_diagnostics"):
         info.append({"type": "entities", "entities": [{"entity": entity, "name": "Erweiterte API-Diagnose freigeben"}]})
+    if box.diagnostics_url and e.get("advanced_diagnostics"):
+        info.append(_help("Erweiterte Diagnose herunterladen",
+            "Drücke oben **Erweiterte API-Diagnose freigeben**, lade die Dashboard-Seite neu "
+            f"und wähle innerhalb von fünf Minuten [Diagnose als ZIP herunterladen]({box.diagnostics_url})."))
     if not export and box.export_url:
         info.append(_note(f"[Dashboard als Vorlage herunterladen]({box.export_url})"))
         info.append(_help("Vorlage verwenden",

@@ -1,19 +1,22 @@
 """Privacy-first diagnostics for G1T and G2T portal profiles.
 
-Standard downloads exclude raw portal content. Advanced downloads require an\nexplicit one-time opt-in and redact likely credentials (best effort).
+Standard downloads exclude raw portal content. During an active grant they
+can provide a private, signed link to the separate advanced ZIP download.
 """
 from __future__ import annotations
 
+from datetime import timedelta
 import re
 import time
 from typing import Any
 
+from homeassistant.components.http.auth import async_sign_path
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .api import AlphaESSPortalApi
 from .schedule import g1t_schedule_schema_matches, strategy_supported
-from .const import DOMAIN
+from .const import DIAGNOSTICS_ARCHIVE_PATH, DOMAIN
 
 # Exact known schema fields only. Unknown fields are never exported.
 _WALLBOX_FIELDS = (
@@ -146,7 +149,7 @@ def _period_schema(settings: Any) -> dict[str, Any]:
 
 
 async def async_get_config_entry_diagnostics(
-    hass: HomeAssistant, entry: ConfigEntry
+    hass: HomeAssistant, entry: ConfigEntry, *, include_archive_link: bool = True
 ) -> dict[str, Any]:
     """Produce a useful, deterministic, read-only, allowlisted diagnosis."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
@@ -157,9 +160,6 @@ async def async_get_config_entry_diagnostics(
     generation, settings = AlphaESSPortalApi._settings_from_wallbox(wallbox)
     status = data.get("wallbox_status")
     report = data.get("latest_report")
-    # Button permission expires after 5 minutes and is consumed once.
-    advanced = time.monotonic() <= coordinator._advanced_diagnostics_until
-    coordinator._advanced_diagnostics_until = 0.0
     result = {
         "diagnostics_schema": 2,
         "privacy": {
@@ -211,13 +211,9 @@ async def async_get_config_entry_diagnostics(
             "daily_report_value_available": isinstance(data.get("today_report_energy"), (int, float)),
         },
     }
-    if advanced:
-        result["advanced_api_snapshot"] = {
-            "warning": "Private debug export: review before sharing; redaction is best effort.",
-            "source": "last cached portal responses; no additional requests",
-            "system": _safe_snapshot(data.get("system")),
-            "configuration": _safe_snapshot(configuration),
-            "live_status": _safe_snapshot(status),
-            "latest_charge_report": _safe_snapshot(report),
-        }
+    if include_archive_link and (remaining := coordinator._advanced_diagnostics_until - time.monotonic()) >= 1:
+        result["advanced_archive_download"] = async_sign_path(
+            hass, f"{DIAGNOSTICS_ARCHIVE_PATH}/{entry.entry_id}",
+            timedelta(seconds=remaining),
+        )
     return result

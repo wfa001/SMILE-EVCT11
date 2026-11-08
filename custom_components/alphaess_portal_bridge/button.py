@@ -7,15 +7,18 @@
 # ---------------------------------------------------------------------------
 from __future__ import annotations
 
+from datetime import timedelta
 import time
 
 from homeassistant.const import EntityCategory
 
+from homeassistant.components import persistent_notification
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .api import AuthenticationError, PortalConnectionError
 from .const import DOMAIN
@@ -91,8 +94,17 @@ class AlphaESSAdvancedDiagnosticsButton(AlphaESSWallboxEntity, ButtonEntity):
 
     def __init__(self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "advanced_diagnostics")
+        self._notification_id = f"{DOMAIN}_advanced_diagnostics_{entry.entry_id}"
 
     async def async_press(self) -> None:
-        # Valid for 5 minutes, consumed by the next diagnostics download.
-        # No remote commands or additional API calls are made.
         self.coordinator._advanced_diagnostics_until = time.monotonic() + 300
+        expires = dt_util.now() + timedelta(minutes=5)
+        persistent_notification.async_create(
+            self.hass,
+            f"Einmaliger ZIP-Download bis **{expires:%H:%M:%S} Uhr**. Lade das Wallbox-Dashboard neu "
+            "und öffne unter **Einstellungen** die Hilfe **Erweiterte Diagnose herunterladen**. "
+            "Bei ausgeblendetem Dashboard enthält der normale Diagnosedownload während "
+            "der Freigabe den ZIP-Link im Feld `advanced_archive_download`.",
+            title="Erweiterte API-Diagnose freigegeben",
+            notification_id=self._notification_id,
+        )

@@ -21,7 +21,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.json import cached_json_fragment
 
-from .const import CONF_SHOW_DASHBOARD, CONF_SYSTEM_SERIAL, DOMAIN
+from .const import CONF_SHOW_DASHBOARD, CONF_SYSTEM_SERIAL, DIAGNOSTICS_ARCHIVE_PATH, DOMAIN
 from .dashboard_builder import WallboxDashboard, build_dashboard
 from .dashboard_capabilities import supported_dashboard_controls
 from .entity import settings_object
@@ -173,6 +173,9 @@ class DashboardManager:
                 settings=settings, power_unit=power.attributes.get("unit_of_measurement", "W") if power else "W",
                 energy_statistics=bool(energy and energy.attributes.get("state_class") == "total_increasing"),
                 export_url=url,
+                diagnostics_url=None if export else async_sign_path(
+                    self.hass, f"{DIAGNOSTICS_ARCHIVE_PATH}/{entry.entry_id}", timedelta(minutes=5)
+                ),
             ))
         # An exported independent dashboard navigates within itself, not back to the managed panel.
         config = build_dashboard(boxes, url_path=self.url_path, export=export)

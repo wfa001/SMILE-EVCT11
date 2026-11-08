@@ -42,6 +42,7 @@ def adapter_namespace(hass=None):
         'logging': __import__('logging'), 'timedelta': __import__('datetime').timedelta,
         'DOMAIN': 'alphaess_portal_bridge', 'CONF_SYSTEM_SERIAL': 'system_serial',
         'CONF_SHOW_DASHBOARD': 'show_dashboard',
+        "DIAGNOSTICS_ARCHIVE_PATH": "/api/alphaess_portal_bridge/diagnostics/archive",
         'MODE_YAML': 'yaml', 'LOVELACE_DATA': 'lovelace',
         'callback': lambda fn: fn, 'LovelaceConfig': Base, 'HomeAssistantView': object,
         'frontend': SimpleNamespace(async_panel_exists=lambda h,p:p in panels,
