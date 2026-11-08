@@ -7,6 +7,8 @@ from __future__ import annotations
 import ast
 import copy
 from datetime import datetime, timedelta, timezone
+import logging
+from math import isfinite
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -41,6 +43,9 @@ def load_production():
         isinstance(node, ast.ClassDef) and node.name in classes
     ) or (isinstance(node, ast.FunctionDef) and node.name == "_first_value")]
     ns = {
+        "logging": logging,
+        "_LOGGER": logging.getLogger(__name__),
+        "isfinite": isfinite,
         "AlphaESSWallboxEntity": BaseEntity,
         "SensorEntity": type("SensorEntity", (), {}),
         "SensorDeviceClass": SimpleNamespace(POWER="power", ENERGY="energy"),

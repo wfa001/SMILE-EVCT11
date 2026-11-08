@@ -1,5 +1,6 @@
 """Regression checks for the documented live energy counter semantics."""
 import ast
+import logging
 from pathlib import Path
 import unittest
 from types import SimpleNamespace
@@ -58,6 +59,9 @@ class LiveEnergyCounterTests(unittest.TestCase):
                 self.coordinator = coordinator
 
         namespace = {
+            "Any": object,
+            "logging": logging,
+            "_LOGGER": logging.getLogger(__name__),
             "AlphaESSWallboxEntity": FakeBase,
             "settings_object": lambda coordinator: (None, {}),
             "SensorEntity": type("SensorEntity", (), {}),
@@ -87,6 +91,38 @@ class LiveEnergyCounterTests(unittest.TestCase):
         self.assertIsNone(daily.native_value)
         coordinator.data = {"wallbox_status": {}}
         self.assertIsNone(daily.native_value)
+
+    def test_energy_trace_distinguishes_missing_null_and_zero(self):
+        from test_wallbox_communication import NS, coordinator_with
+
+        coordinator = coordinator_with({"status": "Charging", "serial": "SECRET-SERIAL"})
+        daily = NS["AlphaESSWallboxEnergySensor"](
+            coordinator, None, "Heute geladen", "chargingAmount", "today_energy"
+        )
+        status = coordinator.data["wallbox_status"]
+        with self.assertLogs(NS["_LOGGER"], level="DEBUG") as logs:
+            self.assertEqual(daily.native_value, 0.0)
+            self.assertEqual(daily.native_value, 0.0)
+            status["chargingAmount"] = 0
+            self.assertEqual(daily.native_value, 0.0)
+            status["chargingAmount"] = None
+            self.assertIsNone(daily.native_value)
+            status["chargingAmount"] = "SECRET-INVALID"
+            self.assertIsNone(daily.native_value)
+            status["chargingAmount"] = "1.25"
+            coordinator.data["wallbox_status_source"] = "system"
+            self.assertEqual(daily.native_value, 1.25)
+
+        self.assertEqual(len(logs.output), 5)
+        for line, expected in zip(logs.output, (
+            "source=real_status status=Charging api=missing sensor_kWh=0.0",
+            "source=real_status status=Charging api=number(0) sensor_kWh=0.0",
+            "source=real_status status=Charging api=null sensor_kWh=None",
+            "source=real_status status=Charging api=invalid sensor_kWh=None",
+            "source=system status=Charging api=numeric string(1.25) sensor_kWh=1.25",
+        ), strict=True):
+            self.assertIn(expected, line)
+            self.assertNotIn("SECRET", line)
 
 
 if __name__ == "__main__":

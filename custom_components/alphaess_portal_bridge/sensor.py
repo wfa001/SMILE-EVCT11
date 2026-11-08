@@ -7,6 +7,8 @@
 # ---------------------------------------------------------------------------
 from __future__ import annotations
 
+import logging
+from math import isfinite
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
@@ -26,6 +28,8 @@ from .entity import (
     wallbox_communication_missing,
     wallbox_object,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _first_value(data: dict[str, Any] | None, *keys: str) -> Any:
@@ -233,6 +237,7 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         super().__init__(coordinator, entry, unique_key)
         self._attr_name = name
         self._key = key
+        self._last_energy_trace: tuple[str, str, str, float | None] | None = None
         # G2T: chargingAmount sums today's sessions; lastChargingAmount resets
         # for a new session and may also be omitted after the daily reset.
         if key == "chargingAmount":
@@ -244,6 +249,14 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         status = data.get("wallbox_status")
         if not isinstance(status, dict):
             return None
+        value = self._energy_value(data, status)
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            self._trace_energy(data, status, value)
+        else:
+            self._last_energy_trace = None
+        return value
+
+    def _energy_value(self, data: dict[str, Any], status: dict[str, Any]) -> float | None:
         # G2T omits zero energy counters, e.g. after midnight or at the start
         # of a new session. Both counters use the same guarded zero fallback.
         # Explicit null/invalid values, unknown profiles and failed reads remain unknown.
@@ -268,6 +281,36 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
             return float(value) if value is not None else None
         except (TypeError, ValueError):
             return None
+
+    def _trace_energy(
+        self, data: dict[str, Any], status: dict[str, Any], value: float | None
+    ) -> None:
+        """Log changes to the selected API field and its resulting sensor value."""
+        raw = status.get(self._key)
+        if self._key not in status:
+            field = "missing"
+        elif raw is None:
+            field = "null"
+        elif type(raw) in (int, float) and value is not None and isfinite(value):
+            field = f"number({raw!r})"
+        elif isinstance(raw, str) and value is not None and isfinite(value):
+            field = f"numeric string({value!r})"
+        else:
+            field = "invalid"
+
+        source = data.get("wallbox_status_source")
+        source = source if source in ("real_status", "system") else "unknown"
+        raw_status = status.get("status")
+        wallbox_status = (
+            raw_status if isinstance(raw_status, str) and raw_status in STATUS_NAMES else "unknown"
+        )
+        trace = (source, wallbox_status, field, value)
+        if trace != self._last_energy_trace:
+            self._last_energy_trace = trace
+            _LOGGER.debug(
+                "Wallbox energy %s: source=%s status=%s api=%s sensor_kWh=%r",
+                self._key, *trace,
+            )
 
     @property
     def extra_state_attributes(self) -> dict[str, str]:
