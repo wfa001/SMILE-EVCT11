@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import ast
 import copy
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
 from math import isfinite
@@ -24,6 +25,14 @@ class BaseEntity:
         self.coordinator = coordinator
         self.unique_key = key
 
+    async def async_added_to_hass(self):
+        pass
+
+
+class FakeRestoreEntity:
+    async def async_get_last_extra_data(self):
+        return getattr(self, "previous", None)
+
 
 def load_production():
     entity = ast.parse((COMPONENT / "entity.py").read_text(encoding="utf-8"))
@@ -37,7 +46,8 @@ def load_production():
     sensor = ast.parse((COMPONENT / "sensor.py").read_text(encoding="utf-8"))
     classes = {
         "AlphaESSWallboxStatusSensor", "AlphaESSWallboxPowerSensor",
-        "AlphaESSWallboxEnergySensor", "AlphaESSYesNoSensor",
+        "AlphaESSWallboxEnergySensor", "AlphaESSWallboxDailyEnergySensor",
+        "DailyEnergyCheckpoint", "AlphaESSYesNoSensor",
     }
     selected += [node for node in sensor.body if (
         isinstance(node, ast.ClassDef) and node.name in classes
@@ -46,6 +56,10 @@ def load_production():
         "logging": logging,
         "_LOGGER": logging.getLogger(__name__),
         "isfinite": isfinite,
+        "dataclass": dataclass,
+        "ExtraStoredData": object,
+        "RestoreEntity": FakeRestoreEntity,
+        "dt_util": SimpleNamespace(now=lambda: datetime.now(timezone.utc)),
         "AlphaESSWallboxEntity": BaseEntity,
         "SensorEntity": type("SensorEntity", (), {}),
         "SensorDeviceClass": SimpleNamespace(POWER="power", ENERGY="energy"),
@@ -144,6 +158,8 @@ class StatusTests(unittest.TestCase):
 
 class DailyEnergyTests(unittest.TestCase):
     def energy(self, item, key="chargingAmount"):
+        if key == "chargingAmount":
+            return NS["AlphaESSWallboxDailyEnergySensor"](item, None).native_value
         return NS["AlphaESSWallboxEnergySensor"](item, None, "Energy", key, key).native_value
 
     def test_midnight_reply_without_energy_shows_zero(self):
