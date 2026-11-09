@@ -167,7 +167,7 @@ class ApiHistory:
         try:
             counts = dict.fromkeys(STREAM_FILES, 0)
             first = last = None
-            with ZipFile(output, "w", ZIP_DEFLATED, compresslevel=3) as archive:
+            with ZipFile(output, "w", ZIP_DEFLATED, compresslevel=6) as archive:
                 if self.path.exists():
                     with closing(self._connect()) as connection, connection:
                         connection.execute("BEGIN")
