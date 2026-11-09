@@ -44,8 +44,8 @@ Die Bridge speichert standardmäßig bis zu 24 Stunden API-Diagnosedaten lokal
 pro Eintrag. Die Einstellung **API-Diagnoseverlauf für 24 Stunden lokal
 aufzeichnen** unter **Optionen** schaltet die Aufzeichnung ab. Normale
 Diagnosen bleiben kompakt. Für die ZIP im Dashboard unter **Einstellungen**
-**Erweiterte API-Diagnose freigeben** drücken, die Ansicht neu laden und die
-Hilfe **Erweiterte Diagnose herunterladen** öffnen. Administratoren können
+**Erweiterte API-Diagnose freigeben** drücken, die Ansicht neu laden und dann
+**Diagnose als ZIP herunterladen** drücken. Administratoren können
 die ZIP während der Freigabe einmalig innerhalb von fünf Minuten herunterladen.
 
 Bei ausgeblendetem Dashboard enthält die normale Diagnosedatei während der

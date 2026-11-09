@@ -382,10 +382,17 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
         info.append({"type": "entities", "title": "Geräteinformationen", "entities": details})
     if entity := e.get("advanced_diagnostics"):
         info.append({"type": "entities", "entities": [{"entity": entity, "name": "Erweiterte API-Diagnose freigeben"}]})
-    if box.diagnostics_url and e.get("advanced_diagnostics"):
+    if not export and box.diagnostics_url and e.get("advanced_diagnostics"):
+        info.append({
+            "type": "button",
+            "name": "Diagnose als ZIP herunterladen",
+            "icon": "mdi:download",
+            "tap_action": {"action": "url", "url_path": box.diagnostics_url},
+            "grid_options": {"columns": 12, "rows": 2},
+        })
         info.append(_help("Erweiterte Diagnose herunterladen",
             "Drücke oben **Erweiterte API-Diagnose freigeben**, lade die Dashboard-Seite neu "
-            f"und wähle innerhalb von fünf Minuten [Diagnose als ZIP herunterladen]({box.diagnostics_url})."))
+            "und drücke innerhalb von fünf Minuten **Diagnose als ZIP herunterladen**."))
     if not export and box.export_url:
         info.append(_note(f"[Dashboard als Vorlage herunterladen]({box.export_url})"))
         info.append(_help("Vorlage verwenden",
