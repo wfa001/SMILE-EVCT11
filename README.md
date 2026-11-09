@@ -40,8 +40,8 @@ Dies ist ein Community-Projekt und keine offizielle AlphaESS-Integration. Die G2
 
 Der Diagnose-Sensor **Portal-Profil** zeigt das erkannte Profil und das dazugehörige Bild `g1t.png` oder `g2t.png`.
 
-Die Bridge speichert standardmäßig bis zu sieben Tage API-Diagnosedaten lokal
-pro Eintrag. Die Einstellung **API-Diagnoseverlauf für sieben Tage lokal
+Die Bridge speichert standardmäßig bis zu 24 Stunden API-Diagnosedaten lokal
+pro Eintrag. Die Einstellung **API-Diagnoseverlauf für 24 Stunden lokal
 aufzeichnen** unter **Optionen** schaltet die Aufzeichnung ab. Normale
 Diagnosen bleiben kompakt. Für die ZIP im Dashboard unter **Einstellungen**
 **Erweiterte API-Diagnose freigeben** drücken, die Ansicht neu laden und die

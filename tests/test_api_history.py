@@ -37,7 +37,10 @@ class ApiHistoryTests(unittest.IsolatedAsyncioTestCase):
         recorded = self.history()
         recorded.record("api", response={"expired": True})
         await recorded.async_flush()
-        self.now += storage["RETENTION_SECONDS"] + 1
+        self.now += 24 * 60 * 60
+        with await recorded.async_export({}, {}) as output, ZipFile(output) as archive:
+            self.assertIn(b'"expired":true', archive.read("api-verlauf.jsonl"))
+        self.now += 1
         items = list(range(45))
         payload = {
             "chargingAmount": 0, "lastChargingAmount": None, "items": items,
@@ -68,6 +71,7 @@ class ApiHistoryTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(events[0]["response"]["lastChargingAmount"])
             self.assertEqual(events[2]["response"], {})
             summary = json.loads(archive.read("diagnose.json"))
+            self.assertEqual(summary["api_history"]["retention_hours"], 24)
             self.assertEqual(summary["api_history"]["records"], {"api": 3, "bridge": 2, "control": 1})
             self.assertIsNotNone(summary["api_history"]["from"])
             self.assertIsNotNone(summary["api_history"]["to"])

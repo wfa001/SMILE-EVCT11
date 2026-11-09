@@ -48,7 +48,7 @@
         "data": {
           "update_interval_seconds": "Refresh every (seconds)",
           "show_dashboard": "Show Wallbox Bridge dashboard",
-          "record_api_history": "Record seven days of local API diagnostics history"
+          "record_api_history": "Record 24 hours of local API diagnostics history"
         }
       }
     }

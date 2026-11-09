@@ -18,7 +18,8 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import zlib
 
 _LOGGER = logging.getLogger(__name__)
-RETENTION_SECONDS = 7 * 24 * 60 * 60
+RETENTION_HOURS = 24
+RETENTION_SECONDS = RETENTION_HOURS * 60 * 60
 MAX_PENDING = 512
 _FILE_PREFIX = "alphaess_api_history_"
 STREAM_FILES = {
@@ -185,7 +186,7 @@ class ApiHistory:
                         archive.writestr(filename, b"")
                 summary["api_history"] = {
                     "enabled": self.enabled,
-                    "retention_days": 7,
+                    "retention_hours": RETENTION_HOURS,
                     "from": _timestamp(first) if first is not None else None,
                     "to": _timestamp(last) if last is not None else None,
                     "records": counts,
