@@ -124,6 +124,49 @@ def _graph(title: str, entities: list[tuple[str | None, str]], rows: int = 3) ->
             "entities": resolved, "grid_options": {"columns": "full", "rows": rows}}
 
 
+def _portal_feedback(entity: str) -> dict:
+    api = json.dumps(entity)
+    template = (
+        "{%- macro age(value) -%}"
+        "{%- set stamp = as_timestamp(value, default=none) -%}"
+        "{%- if stamp is none -%}noch keine"
+        "{%- else -%}{%- set seconds = [0, (as_timestamp(now()) - stamp)|int]|max -%}"
+        "vor {{ seconds if seconds < 60 else seconds // 60 if seconds < 3600 else seconds // 3600 }} "
+        "{{ 's' if seconds < 60 else 'min' if seconds < 3600 else 'h' }}"
+        "{%- endif -%}{%- endmacro -%}\n"
+        f"{{%- set live = state_attr({api}, 'Letzte erfolgreiche Live-Abfrage') -%}}"
+        f"{{%- set config = state_attr({api}, 'Letzte erfolgreiche Konfigurationsabfrage') -%}}"
+        f"{{%- if state_attr({api}, 'Live-Endpunkt unterstützt') is sameas false -%}}"
+        "Einstellungen: {{ age(config) }}"
+        "{%- else -%}Live-Abfrage: {{ age(live) }} · Einstellungen: {{ age(config) }}{%- endif -%}"
+        f"{{%- set result = state_attr({api}, 'Einstellungsübertragung') -%}}"
+        f"{{%- set sent = as_timestamp(state_attr({api}, 'Übertragung angenommen am'), default=none) -%}}"
+        f"{{%- set confirmed = as_timestamp(state_attr({api}, 'Im Portal bestätigt am'), default=none) -%}}"
+        "{%- if result == 'Bestätigung ausstehend' and sent is not none and as_timestamp(now()) - sent >= 120 -%}"
+        "{%- set result = 'Nicht bestätigt' -%}{%- endif -%}"
+        "{%- if result == 'Im Portal bestätigt' and confirmed is not none and as_timestamp(now()) - confirmed >= 300 -%}"
+        "{%- set result = none -%}{%- endif -%}"
+        "{%- if result and result != 'Keine Übertragung erfasst' %}\n\n"
+        "Letzte Einstellungsübertragung: **{{ result }}**."
+        "{%- endif -%}")
+    return {**_note(template), 'text_only': True, 'entity_id': [entity]}
+
+
+def _unavailable_controls(entities: dict[str, str], profile: str | None) -> dict | None:
+    buttons = [entities[key] for key in ('start', 'stop') if entities.get(key)]
+    if profile not in {'g1T', 'g2T'} or not buttons:
+        return None
+    blocked = ' and '.join(f'is_state({json.dumps(e)}, "unavailable")' for e in buttons)
+    reason = ' or '.join(f'state_attr({json.dumps(e)}, "Bedienhinweis")' for e in buttons)
+    # Package 1 already explains this case next to the strategy selector.
+    strategy = entities.get('charge_strategy_select')
+    if profile == 'g2T' and strategy:
+        blocked += f' and not is_state({json.dumps(strategy)}, "Zeitgesteuertes Aufladen")'
+    template = '{% if ' + blocked + ' %}{{ ' + reason + " or '' }}{% endif %}"
+    return {**_note(template), 'show_empty': False,
+            'entity_id': buttons + ([strategy] if strategy else [])}
+
+
 def _section(cards: list, *, wide: bool = False) -> dict:
     section = {"type": "grid", "cards": [card for card in cards if card]}
     if wide:
@@ -184,6 +227,8 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
         ("api_connection", "Wallbox Bridge Verbindung", "mdi:cloud-check")) if key in e]
     if rows:
         left.append({"type": "entities", "show_header_toggle": False, "entities": rows})
+    if api:
+        left.append(_portal_feedback(api))
     if indices:
         # One template string per row, no missing entity placeholders or invented values.
         lines = ["**Gespeicherte Zeitfenster**", "", "| Fenster | Freigabe | Zeit | Lademodus |",
@@ -240,6 +285,8 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
                     continue
                 button = _condition(button, strategy, "Manuell")
             right.append(button)
+    if hint := _unavailable_controls(e, box.profile):
+        right.append(hint)
     if (g1 and any(e.get(key) for key in ("charge_mode_select", "start", "stop"))
             and not any(e.get(f"time_period_{i}_mode") for i in indices)):
         right.append(_help("Ladesteuerung erklärt",
