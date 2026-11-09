@@ -50,9 +50,18 @@ die ZIP während der Freigabe einmalig innerhalb von fünf Minuten herunterladen
 
 Bei ausgeblendetem Dashboard enthält die normale Diagnosedatei während der
 Freigabe den privaten Downloadlink `advanced_archive_download`. Diesen im
-Browser an die eigene Home-Assistant-Adresse anhängen. Für Support die ZIP
-weitergeben. Sie enthält Betriebs- und Ladedaten, einschließlich Zeitpunkten
-und Energiemengen. Bei leerem Verlauf enthält sie eine bereinigte Momentaufnahme.
+Browser an die eigene Home-Assistant-Adresse anhängen. Die ZIP enthält
+Betriebs- und Ladedaten, einschließlich Zeitpunkten und Energiemengen.
+Für Support privat weitergeben.
+
+In `api-verlauf.jsonl` stehen die einzelnen Leseabfragen mit Zeitpunkt,
+HTTP-Status und, sofern eine JSON-Antwort vorliegt, einer `response_id`.
+Diese verweist auf die entsprechende `id` in `api-antworten.jsonl`.
+Identische bereinigte Antworten stehen dort einmal. Neue API-Felder und
+Änderungen an Werten oder Datentypen bleiben sichtbar. Bekannte sensible
+Werte werden maskiert oder pseudonymisiert, auch beim Export älterer
+Aufzeichnungen. Bei leerem Verlauf enthält die ZIP eine bereinigte
+Momentaufnahme.
 
 
 ### G1T

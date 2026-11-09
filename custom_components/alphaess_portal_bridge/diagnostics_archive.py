@@ -10,7 +10,7 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.components.http.const import KEY_HASS_USER
 
 from .const import DIAGNOSTICS_ARCHIVE_PATH, DOMAIN
-from .diagnostics import _safe_snapshot, async_get_config_entry_diagnostics
+from .diagnostics import async_get_config_entry_diagnostics
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,10 +52,10 @@ class DiagnosticsArchiveView(HomeAssistantView):
                 key: wallbox.get(key) for key in ("model", "softwareVersion", "hardwareVersion")
             }
             archive = await coordinator.api.history.async_export(summary, {
-                "system": _safe_snapshot(data.get("system")),
-                "configuration": _safe_snapshot(data.get("configuration")),
-                "live_status": _safe_snapshot(data.get("wallbox_status")),
-                "latest_charge_report": _safe_snapshot(data.get("latest_report")),
+                "system": data.get("system"),
+                "configuration": data.get("configuration"),
+                "live_status": data.get("wallbox_status"),
+                "latest_charge_report": data.get("latest_report"),
             })
         except Exception:
             if coordinator._advanced_diagnostics_until == 0.0 and grant > time.monotonic():
