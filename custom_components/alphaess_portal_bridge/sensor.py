@@ -7,6 +7,9 @@
 # ---------------------------------------------------------------------------
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass
+from math import isfinite
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
@@ -14,6 +17,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfElectricCurrent, UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
@@ -26,6 +31,8 @@ from .entity import (
     wallbox_communication_missing,
     wallbox_object,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _first_value(data: dict[str, Any] | None, *keys: str) -> Any:
@@ -50,7 +57,7 @@ async def async_setup_entry(
             AlphaESSWallboxPowerSensor(coordinator, entry),
             AlphaESSYesNoSensor(coordinator, entry, "Fahrzeug angeschlossen", "vehicle_connected"),
             AlphaESSYesNoSensor(coordinator, entry, "Ladestecker verriegelt", "gun_locked"),
-            AlphaESSWallboxEnergySensor(coordinator, entry, "Heute geladen", "chargingAmount", "today_energy"),
+            AlphaESSWallboxDailyEnergySensor(coordinator, entry),
             AlphaESSWallboxEnergySensor(coordinator, entry, "Aktuelle / letzte Ladesitzung", "lastChargingAmount", "last_energy"),
             AlphaESSWallboxModeSensor(coordinator, entry),
             AlphaESSWallboxGenerationSensor(coordinator, entry),
@@ -238,10 +245,7 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         super().__init__(coordinator, entry, unique_key)
         self._attr_name = name
         self._key = key
-        # G2T: chargingAmount sums today's sessions; lastChargingAmount resets
-        # for a new session and may also be omitted after the daily reset.
-        if key == "chargingAmount":
-            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._last_energy_trace: tuple[str, str, str, float | None] | None = None
 
     @property
     def native_value(self) -> float | None:
@@ -249,6 +253,14 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         status = data.get("wallbox_status")
         if not isinstance(status, dict):
             return None
+        value = self._energy_value(data, status)
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            self._trace_energy(data, status, value)
+        else:
+            self._last_energy_trace = None
+        return value
+
+    def _energy_value(self, data: dict[str, Any], status: dict[str, Any]) -> float | None:
         # G2T omits zero energy counters, e.g. after midnight or at the start
         # of a new session. Both counters use the same guarded zero fallback.
         # Explicit null/invalid values, unknown profiles and failed reads remain unknown.
@@ -274,17 +286,38 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         except (TypeError, ValueError):
             return None
 
+    def _trace_energy(
+        self, data: dict[str, Any], status: dict[str, Any], value: float | None
+    ) -> None:
+        """Log changes to the selected API field and its resulting sensor value."""
+        raw = status.get(self._key)
+        if self._key not in status:
+            field = "missing"
+        elif raw is None:
+            field = "null"
+        elif type(raw) in (int, float) and value is not None and isfinite(value):
+            field = f"number({raw!r})"
+        elif isinstance(raw, str) and value is not None and isfinite(value):
+            field = f"numeric string({float(raw)!r})"
+        else:
+            field = "invalid"
+
+        source = data.get("wallbox_status_source")
+        source = source if source in ("real_status", "system") else "unknown"
+        raw_status = status.get("status")
+        wallbox_status = (
+            raw_status if isinstance(raw_status, str) and raw_status in STATUS_NAMES else "unknown"
+        )
+        trace = (source, wallbox_status, field, value)
+        if trace != self._last_energy_trace:
+            self._last_energy_trace = trace
+            _LOGGER.debug(
+                "Wallbox energy %s: source=%s status=%s api=%s sensor_kWh=%r",
+                self._key, *trace,
+            )
+
     @property
     def extra_state_attributes(self) -> dict[str, str]:
-        if self._key == "chargingAmount":
-            return {
-                "Quelle": "Portal real-status: chargingAmount",
-                "Hinweis": (
-                    "Summe der heutigen Ladesitzungen. Bei erfolgreicher G1T-/G2T-Live-Antwort "
-                    "mit normalem Status und fehlendem chargingAmount wird 0 angezeigt. Bei Lesefehlern "
-                    "oder fehlendem Status wird keine 0 ergänzt. Keine lokale Rücksetzung um Mitternacht."
-                ),
-            }
         return {
             "Quelle": "Portal real-status: lastChargingAmount",
             "Hinweis": (
@@ -293,6 +326,70 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
                 "Bei erfolgreicher G1T-/G2T-Live-Antwort mit normalem Status und fehlendem lastChargingAmount wird 0 angezeigt. "
                 "Explizites null, Lesefehler und fehlender Status erhalten keinen Nullersatz. "
                 "Kein dauerhaft gespeicherter letzter Ladevorgang über Tageswechsel hinweg."
+            ),
+        }
+
+
+@dataclass
+class DailyEnergyCheckpoint(ExtraStoredData):
+    """Remember the last positive native value and its local day."""
+
+    day: str
+    kwh: float
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"day": self.day, "kwh": self.kwh}
+
+
+class AlphaESSWallboxDailyEnergySensor(AlphaESSWallboxEnergySensor, RestoreEntity):
+    """Protect the G2T daily counter from spurious resets."""
+
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    def __init__(self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "Heute geladen", "chargingAmount", "today_energy")
+        self._checkpoint: DailyEnergyCheckpoint | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if previous := await self.async_get_last_extra_data():
+            saved = previous.as_dict()
+            day, kwh = saved.get("day"), saved.get("kwh")
+            if isinstance(day, str) and type(kwh) in (int, float) and isfinite(kwh) and kwh > 0:
+                self._checkpoint = DailyEnergyCheckpoint(day, kwh)
+
+    @property
+    def extra_restore_state_data(self) -> ExtraStoredData | None:
+        return self._checkpoint
+
+    def _energy_value(self, data: dict[str, Any], status: dict[str, Any]) -> float | None:
+        value = super()._energy_value(data, status)
+        if value is None or not isfinite(value) or value < 0:
+            return value
+        generation, _ = settings_object(self.coordinator)
+        if generation != "g2T":
+            return value
+
+        day = dt_util.now().date().isoformat()
+        checkpoint = self._checkpoint
+        if value == 0:
+            if checkpoint is not None and checkpoint.day == day:
+                return checkpoint.kwh
+            self._checkpoint = None
+        elif checkpoint is None or value != checkpoint.kwh:
+            # An unchanged reading just after midnight can still be yesterday's
+            # final reading. Do not let it suppress the incoming daily reset.
+            self._checkpoint = DailyEnergyCheckpoint(day, value)
+        return value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        return {
+            "Quelle": "Portal real-status: chargingAmount",
+            "Hinweis": (
+                "Summe der heutigen Ladesitzungen. Bei einer gültigen Live-Antwort "
+                "ohne Zählerfeld kann 0 angezeigt werden. Bei G2T bleibt ein bereits "
+                "gelieferter Tageswert bei einem Nullsprung am selben Tag erhalten."
             ),
         }
 
