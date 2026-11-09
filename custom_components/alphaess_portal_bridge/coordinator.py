@@ -76,7 +76,20 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._latest_live_status: dict[str, Any] | None = None
         self.api.set_settings_written_callback(self._schedule_followup_refresh)
         if feedback := getattr(self.api, 'settings_feedback', None):
-            feedback.set_listener(self.async_update_listeners)
+            feedback.set_listener(self._async_settings_feedback_changed)
+
+    def _async_settings_feedback_changed(self) -> None:
+        if history := getattr(self.api, "history", None):
+            history.record("control", event="settings_read_back", **self.api.settings_feedback.attributes())
+        self.async_update_listeners()
+
+    def _record_selected_status(self, data: dict[str, Any], poll: str) -> None:
+        if history := getattr(self.api, "history", None):
+            status = data.get("wallbox_status")
+            status = status if isinstance(status, dict) else {}
+            history.record("bridge", event="selected_status", poll=poll,
+                           source=data.get("wallbox_status_source"), status=status.get("status"),
+                           power=status.get("power"), settings_read_ok=data.get("configuration_read_ok"))
 
     @property
     def api_connection_status(self) -> str:
@@ -157,6 +170,8 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "wallbox_status_source": "real_status",
                 }
                 self._live_refresh_errors = 0
+                if getattr(self.api, "history", None):
+                    self._record_selected_status(self.data, "live")
                 self.async_update_listeners()
         except AuthenticationError as err:
             self._live_failure_count += 1
@@ -270,11 +285,16 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if feedback is not None and not self._stopped:
                     wallbox = self.api._find_wallbox_data(
                         refreshed.get('configuration'), refreshed.get('wallbox_serial'))
+                    previous = feedback.state
                     feedback.observe(wallbox, write_revision)
+                    if getattr(self.api, "history", None) and feedback.state != previous:
+                        self.api.history.record("control", event="settings_read_back", **feedback.attributes())
             else:
                 # A successful system/live reply cannot refresh failed settings.
                 self._full_failure_count += 1
                 self._full_consecutive_errors += 1
+            if getattr(self.api, "history", None):
+                self._record_selected_status(refreshed, "full")
             return refreshed
         except AuthenticationError as err:
             self._full_failure_count += 1

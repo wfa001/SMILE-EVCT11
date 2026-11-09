@@ -40,6 +40,21 @@ Dies ist ein Community-Projekt und keine offizielle AlphaESS-Integration. Die G2
 
 Der Diagnose-Sensor **Portal-Profil** zeigt das erkannte Profil und das dazugehörige Bild `g1t.png` oder `g2t.png`.
 
+Die Bridge speichert standardmäßig bis zu 24 Stunden API-Diagnosedaten lokal
+pro Eintrag. Die Einstellung **API-Diagnoseverlauf für 24 Stunden lokal
+aufzeichnen** unter **Optionen** schaltet die Aufzeichnung ab. Normale
+Diagnosen bleiben kompakt. Für die ZIP im Dashboard unter **Einstellungen**
+**Erweiterte API-Diagnose freigeben** drücken, die Ansicht neu laden und die
+Hilfe **Erweiterte Diagnose herunterladen** öffnen. Administratoren können
+die ZIP während der Freigabe einmalig innerhalb von fünf Minuten herunterladen.
+
+Bei ausgeblendetem Dashboard enthält die normale Diagnosedatei während der
+Freigabe den privaten Downloadlink `advanced_archive_download`. Diesen im
+Browser an die eigene Home-Assistant-Adresse anhängen. Für Support die ZIP
+weitergeben. Sie enthält Betriebs- und Ladedaten, einschließlich Zeitpunkten
+und Energiemengen. Bei leerem Verlauf enthält sie eine bereinigte Momentaufnahme.
+
+
 ### G1T
 
 - Zwei vom Portal gemeldete Zeitfenster mit Aktivierung, Beginn und Ende können in Home Assistant gelesen und bearbeitet werden. Der lokale G1T-Test vom 15.10.2026 bestätigte, dass eine über Home Assistant geänderte Zeit im Portal ankommt. Das bestätigt die Speicherung, nicht die tatsächliche Ladeausführung.

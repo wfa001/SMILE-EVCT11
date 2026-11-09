@@ -24,6 +24,7 @@ from .api import AlphaESSPortalApi, AuthenticationError, PortalConnectionError
 from .const import (
     CONF_AUTHENTICATION_PAUSED,
     CONF_PASSWORD,
+    CONF_RECORD_API_HISTORY,
     CONF_SHOW_DASHBOARD,
     CONF_SYSTEM_SERIAL,
     CONF_UPDATE_INTERVAL,
@@ -204,6 +205,10 @@ class AlphaESSPortalBridgeOptionsFlow(config_entries.OptionsFlowWithReload):
                     vol.Required(
                         CONF_SHOW_DASHBOARD,
                         default=self.config_entry.options.get(CONF_SHOW_DASHBOARD, True),
+                    ): BooleanSelector(),
+                    vol.Required(
+                        CONF_RECORD_API_HISTORY,
+                        default=self.config_entry.options.get(CONF_RECORD_API_HISTORY, True),
                     ): BooleanSelector(),
                 }
             ),
