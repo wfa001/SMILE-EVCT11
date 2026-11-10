@@ -62,43 +62,6 @@ def _diagnostic_field_names(document: Any) -> list[str]:
     )[:40]
 
 
-# Hard stop on authentication and private-account fields. Unknown fields are
-# included unless they look like secrets; this export still requires care.
-_SECRET_KEYS = re.compile(
-    r"(?i)(?:password|passwd|secret|token|authorization|authentication|cookie|api.?key|"
-    r"private.?key|refresh|credential|bearer|session.?id|email|phone|mobile|address)"
-)
-_SECRET_VALUE = re.compile(
-    r"(?i)(?:^bearer\s|^basic\s|^sk-[A-Za-z0-9_-]+|"
-    r"^[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$)"
-)
-
-
-def _safe_snapshot(value: Any, depth: int = 0) -> Any:
-    """Bounded redacted copy of an API data object, with no automatic persistence."""
-    if depth > 10:
-        return "[depth limit]"
-    if isinstance(value, dict):
-        result = {}
-        for key, item in list(value.items())[:150]:
-            if not isinstance(key, str) or len(key) > 100:
-                continue
-            result[key] = (
-                "[REDACTED]" if _SECRET_KEYS.search(key)
-                else _safe_snapshot(item, depth + 1)
-            )
-        return result
-    if isinstance(value, list):
-        return [_safe_snapshot(item, depth + 1) for item in value[:30]]
-    if isinstance(value, str):
-        if _SECRET_VALUE.search(value):
-            return "[REDACTED]"
-        return value[:512]
-    if type(value) in (bool, int, float) or value is None:
-        return value
-    return "[unsupported type]"
-
-
 def _present_fields(document: Any, allowed: tuple[str, ...]) -> list[str]:
     """Reveal only the presence of predefined public schema names."""
     if not isinstance(document, dict):

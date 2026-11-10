@@ -22,7 +22,7 @@ def load_helpers():
     module = ast.parse(source.read_text(encoding="utf-8"))
     names = {
         "_present_fields", "_bool_capability", "_period_schema",
-        "_diagnostic_field_names", "_safe_snapshot", "async_get_config_entry_diagnostics",
+        "_diagnostic_field_names", "async_get_config_entry_diagnostics",
     }
     subset = ast.Module(
         body=[
@@ -32,7 +32,7 @@ def load_helpers():
                 isinstance(target, ast.Name) and target.id in {
                     "_WALLBOX_FIELDS", "_COMMON_SETTINGS", "_SCHEDULE_SETTINGS", "_G2T_SETTINGS",
                     "_LIVE_FIELDS", "_REPORT_FIELDS", "_DIAGNOSTIC_KEY", "_SAFE_KEY",
-                    "_SENSITIVE_KEY", "_SECRET_KEYS", "_SECRET_VALUE",
+                    "_SENSITIVE_KEY",
                 } for target in node.targets
             ))
         ],

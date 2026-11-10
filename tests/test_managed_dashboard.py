@@ -260,6 +260,21 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn('/api/',exported)
         self.assertNotIn('/alphaess-wallbox-bridge/',exported)
 
+    def test_zip_download_uses_a_browser_url_action_and_stays_out_of_templates(self):
+        url = "/api/alphaess_portal_bridge/diagnostics/archive/A?authSig=signature"
+        box = builder.WallboxDashboard(
+            "A", "Garage", "g2T", {"advanced_diagnostics": "button.diagnostics"},
+            diagnostics_url=url,
+        )
+        managed = builder.build_dashboard([box])
+        download = next(
+            card for card in cards(managed)
+            if card.get("name") == "Diagnose als ZIP herunterladen"
+        )
+        self.assertEqual(download["type"], "button")
+        self.assertEqual(download["tap_action"], {"action": "url", "url_path": url})
+        self.assertNotIn(url, json.dumps(builder.build_dashboard([box], export=True)))
+
     def test_download_requires_authentication_and_unknown_entries_fail_closed(self):
         ns=adapter_namespace()
         self.assertTrue(ns['DashboardExportView'].requires_auth)

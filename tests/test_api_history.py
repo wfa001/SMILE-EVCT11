@@ -39,7 +39,7 @@ class ApiHistoryTests(unittest.IsolatedAsyncioTestCase):
         await recorded.async_flush()
         self.now += 24 * 60 * 60
         with await recorded.async_export({}, {}) as output, ZipFile(output) as archive:
-            self.assertIn(b'"expired":true', archive.read("api-verlauf.jsonl"))
+            self.assertIn(b'"expired":true', archive.read("api-antworten.jsonl"))
         self.now += 1
         items = list(range(45))
         payload = {
@@ -48,8 +48,11 @@ class ApiHistoryTests(unittest.IsolatedAsyncioTestCase):
             "echo": "PRIVATE-PASSWORD",
         }
         recorded.record("api", response=payload, http_status=200)
+        self.now += 5
         recorded.record("api", response=payload, http_status=200)
-        recorded.record("api", response={})
+        recorded.record("api", response={**payload, "chargingAmount": "0", "newField": [True, None]})
+        recorded.record("api", response=None, http_status=200)
+        recorded.record("api", error="timeout")
         recorded.record("bridge", input="missing", sensor_kwh=35.73)
         recorded.record("control", method="PATCH", http_status=204)
         # Mutating the application payload must not change the captured response.
@@ -59,30 +62,70 @@ class ApiHistoryTests(unittest.IsolatedAsyncioTestCase):
         with await self.history().async_export({}, {}) as output, ZipFile(output) as archive:
             self.assertEqual(set(archive.namelist()), {
                 "api-verlauf.jsonl", "bridge-verlauf.jsonl", "steuerung.jsonl", "diagnose.json",
+                "api-antworten.jsonl",
             })
-            raw = archive.read("api-verlauf.jsonl")
+            raw = archive.read("api-antworten.jsonl")
             for private in (b"PRIVATE-TOKEN", b"PRIVATE-SERIAL", b"PRIVATE-PASSWORD", b"expired"):
                 self.assertNotIn(private, raw)
-            events = [json.loads(line) for line in raw.splitlines()]
-            self.assertEqual(len(events), 3)
-            self.assertEqual(events[0], events[1])
-            self.assertEqual(events[0]["response"]["items"], list(range(45)))
-            self.assertEqual(events[0]["response"]["chargingAmount"], 0)
-            self.assertIsNone(events[0]["response"]["lastChargingAmount"])
-            self.assertEqual(events[2]["response"], {})
+            events = [json.loads(line) for line in archive.read("api-verlauf.jsonl").splitlines()]
+            responses = dict((row["id"], row["response"]) for row in map(json.loads, raw.splitlines()))
+            self.assertEqual(len(events), 5)
+            self.assertEqual(len(responses), 3)
+            self.assertNotEqual(events[0]["at"], events[1]["at"])
+            self.assertEqual(events[0]["response_id"], events[1]["response_id"])
+            self.assertNotEqual(events[0]["response_id"], events[2]["response_id"])
+            self.assertEqual(events[0]["http_status"], 200)
+            original = responses[events[0]["response_id"]]
+            self.assertEqual(original["items"], list(range(45)))
+            self.assertEqual(original["chargingAmount"], 0)
+            self.assertIsNone(original["lastChargingAmount"])
+            self.assertEqual(original["account"]["accessToken"], "[redacted]")
+            changed = responses[events[2]["response_id"]]
+            self.assertEqual(changed["chargingAmount"], "0")
+            self.assertEqual(changed["newField"], [True, None])
+            self.assertIsNone(responses[events[3]["response_id"]])
+            self.assertNotIn("response_id", events[4])
             summary = json.loads(archive.read("diagnose.json"))
+            self.assertEqual(summary["api_history"]["archive_format"], 2)
             self.assertEqual(summary["api_history"]["retention_hours"], 24)
-            self.assertEqual(summary["api_history"]["records"], {"api": 3, "bridge": 2, "control": 1})
+            self.assertEqual(summary["api_history"]["unique_api_responses"], 3)
+            self.assertEqual(summary["api_history"]["records"], {"api": 5, "bridge": 2, "control": 1})
             self.assertIsNotNone(summary["api_history"]["from"])
             self.assertIsNotNone(summary["api_history"]["to"])
+
+    async def test_export_masks_sensitive_values_already_saved_in_the_history(self):
+        recorded = self.history()
+        legacy = {
+            "basic": {"checkCode": "PRIVATE-CODE", "linkman": "PRIVATE-CONTACT"},
+            "sysSn": "id-0123456789abcdef",
+            "newPortalField": {"version": 3},
+        }
+        await asyncio.to_thread(recorded._write, [
+            (self.now, "api", {"response": legacy}),
+            (self.now, "control", {"request": {"configuration": legacy}}),
+        ], self.now)
+        recorded.record("api", response=legacy)
+        with await recorded.async_export({}, {}) as output, ZipFile(output) as archive:
+            [row] = map(json.loads, archive.read("api-antworten.jsonl").splitlines())
+            [control] = map(json.loads, archive.read("steuerung.jsonl").splitlines())
+            sanitized = {
+                "basic": {"checkCode": "[redacted]", "linkman": "[redacted]"},
+                "sysSn": "id-0123456789abcdef",
+                "newPortalField": {"version": 3},
+            }
+            self.assertEqual(row["response"], sanitized)
+            self.assertEqual(control["request"]["configuration"], sanitized)
 
     async def test_disabled_archive_exports_only_the_cached_fallback(self):
         recorder = self.history(enabled=False)
         recorder.record("api", response={"not_recorded": True})
-        with await recorder.async_export({}, {"status": "Charging"}) as output, ZipFile(output) as archive:
+        snapshot = {"status": "Charging", "newField": list(range(45)), "checkCode": "PRIVATE-CODE"}
+        with await recorder.async_export({}, snapshot) as output, ZipFile(output) as archive:
             self.assertEqual(archive.read("api-verlauf.jsonl"), b"")
+            self.assertEqual(archive.read("api-antworten.jsonl"), b"")
             self.assertEqual(
-                json.loads(archive.read("api-momentaufnahme.json")), {"status": "Charging"}
+                json.loads(archive.read("api-momentaufnahme.json")),
+                {**snapshot, "checkCode": "[redacted]"},
             )
         self.assertFalse(recorder.path.exists())
 
@@ -125,7 +168,6 @@ class ArchiveDownloadTests(unittest.IsolatedAsyncioTestCase):
             ),
             "time": SimpleNamespace(monotonic=lambda: self.now),
             "async_get_config_entry_diagnostics": summary,
-            "_safe_snapshot": lambda value: value,
         }
         exec(compile(ast.Module(body=[node], type_ignores=[]), "<archive view>", "exec"), ns)
 

@@ -10,6 +10,7 @@ import json
 import logging
 from pathlib import Path
 import re
+from shutil import copyfileobj
 import sqlite3
 from tempfile import TemporaryFile
 import time
@@ -27,16 +28,23 @@ STREAM_FILES = {
     "bridge": "bridge-verlauf.jsonl",
     "control": "steuerung.jsonl",
 }
-_SECRET = re.compile(r"password|passwd|token|auth|secret|credential|cookie|api.?key|private.?key", re.I)
+_RESPONSES_FILE = "api-antworten.jsonl"
+_REDACTED = "[redacted]"
+_SECRET = re.compile(
+    r"password|passwd|token|auth|secret|credential|cookie|api.?key|private.?key|bearer"
+    r"|^(check.?code|link.?man|refresh|session.?id)$",
+    re.I,
+)
 _PRIVATE = re.compile(
     r"^(id|sn|uuid|deviceid|userid|accountid|sessionid|macaddress|ip|lat|lng|lon)$"
     r"|sn$|serial|email|phone|mobile|address|username|latitude|longitude"
-    r"|location|postalcode|zipcode|sitename|systemname|ownername|installername",
+    r"|location|postalcode|zipcode|sitename|systemname|ownername|installername|realname",
     re.I,
 )
+_PSEUDONYM = re.compile(r"id-[0-9a-f]{16}")
 _PRIVATE_TEXT = re.compile(
     r"(?i)\b(?:bearer|basic)\s+[\w.+/=\-]+|\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b"
-    r"|\beyJ[\w-]+\.[\w-]+\.[\w-]+\b"
+    r"|\beyJ[\w-]+\.[\w-]+\.[\w-]+\b|\bsk-[A-Za-z0-9_-]+",
 )
 
 
@@ -69,29 +77,33 @@ class ApiHistory:
 
     def add_identifier(self, value: Any) -> None:
         if isinstance(value, str) and value and value not in self._identifiers:
-            self._identifiers[value] = self._alias(value)
+            # An export can be iterating over the previous identifiers in the executor.
+            self._identifiers = {**self._identifiers, value: self._alias(value)}
 
     def _clean(self, value: Any) -> Any:
         if isinstance(value, dict):
             cleaned = {}
             for key, item in value.items():
-                if _SECRET.search(key):
-                    continue
                 safe_key = self._clean(key)
-                cleaned[safe_key] = (
-                    self._alias(item) if _PRIVATE.search(key) and item is not None
-                    else self._clean(item)
-                )
+                if _SECRET.search(key):
+                    cleaned[safe_key] = item if item is None or item == "" else _REDACTED
+                elif _PRIVATE.search(key) and item is not None and item != "":
+                    cleaned[safe_key] = (
+                        item if isinstance(item, str) and _PSEUDONYM.fullmatch(item)
+                        else self._alias(item)
+                    )
+                else:
+                    cleaned[safe_key] = self._clean(item)
             return cleaned
         if isinstance(value, list):
             return [self._clean(item) for item in value]
         if isinstance(value, str):
             if self._password and (value == self._password or len(self._password) >= 8):
-                value = value.replace(self._password, "[redacted]")
+                value = value.replace(self._password, _REDACTED)
             for identifier, alias in self._identifiers.items():
                 if value == identifier or len(identifier) >= 5:
                     value = value.replace(identifier, alias)
-            return _PRIVATE_TEXT.sub("[redacted]", value)
+            return _PRIVATE_TEXT.sub(_REDACTED, value)
         if isinstance(value, float) and (value != value or abs(value) == float("inf")):
             return str(value)
         return value
@@ -167,7 +179,11 @@ class ApiHistory:
         try:
             counts = dict.fromkeys(STREAM_FILES, 0)
             first = last = None
-            with ZipFile(output, "w", ZIP_DEFLATED, compresslevel=6) as archive:
+            response_ids: set[str] = set()
+            with (
+                TemporaryFile() as responses,
+                ZipFile(output, "w", ZIP_DEFLATED, compresslevel=6) as archive,
+            ):
                 if self.path.exists():
                     with closing(self._connect()) as connection, connection:
                         connection.execute("BEGIN")
@@ -180,23 +196,42 @@ class ApiHistory:
                                     first = at if first is None else min(first, at)
                                     last = at if last is None else max(last, at)
                                     counts[stream] += 1
-                                    part.write(zlib.decompress(blob) + b"\n")
+                                    # Apply the current filter to rows written before an update, too.
+                                    event = self._clean(json.loads(zlib.decompress(blob)))
+                                    if stream == "api" and "response" in event:
+                                        body = event.pop("response")
+                                        response_id = blake2s(_json(body)).hexdigest()
+                                        event["response_id"] = response_id
+                                        if response_id not in response_ids:
+                                            response_ids.add(response_id)
+                                            responses.write(_json({"id": response_id, "response": body}) + b"\n")
+                                    part.write(_json(event) + b"\n")
                 else:
                     for filename in STREAM_FILES.values():
                         archive.writestr(filename, b"")
+                responses.seek(0)
+                with archive.open(_RESPONSES_FILE, "w", force_zip64=True) as part:
+                    copyfileobj(responses, part)
                 summary["api_history"] = {
+                    "archive_format": 2,
                     "enabled": self.enabled,
                     "retention_hours": RETENTION_HOURS,
                     "from": _timestamp(first) if first is not None else None,
                     "to": _timestamp(last) if last is not None else None,
                     "records": counts,
+                    "unique_api_responses": len(response_ids),
                     "storage_error": self._storage_error,
+                }
+                summary["privacy"] = {
+                    "mode": "filtered_api_payloads",
+                    "contains_raw_api_responses": False,
+                    "may_include_charge_history_values": True,
                 }
                 manifest = json.loads(Path(__file__).with_name("manifest.json").read_text(encoding="utf-8"))
                 summary["bridge_manifest_version"] = manifest["version"]
                 archive.writestr("diagnose.json", _json(summary))
                 if not counts["api"]:
-                    archive.writestr("api-momentaufnahme.json", _json(snapshot))
+                    archive.writestr("api-momentaufnahme.json", _json(self._clean(snapshot)))
             output.seek(0)
             return output
         except BaseException:
@@ -206,7 +241,7 @@ class ApiHistory:
     async def async_export(self, summary: dict, snapshot: dict) -> BinaryIO:
         await self.async_flush()
         return await self.hass.async_add_executor_job(
-            self._build_zip, self._clean(summary), self._clean(snapshot), time.time() - RETENTION_SECONDS
+            self._build_zip, self._clean(summary), snapshot, time.time() - RETENTION_SECONDS
         )
 
 
