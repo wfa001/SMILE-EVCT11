@@ -52,6 +52,18 @@ class HistoryTests(unittest.TestCase):
         config=builder.build_dashboard([builder.WallboxDashboard('B','Carport','g1T',{})])
         self.assertFalse(any(c.get('title','').startswith('Phasenwahl und') for c in cards(config)))
 
+    def test_last_charge_tile_and_current_charge_are_separate(self):
+        config = builder.build_dashboard([builder.WallboxDashboard("A", "Garage", "g2T", {
+            "status": "sensor.status", "last_energy": "sensor.live",
+            "last_completed_energy": "sensor.completed", "today_energy": "sensor.day",
+        })])
+        overview = list(cards(config["views"][0]))
+        completed = next(card for card in overview if card.get("entity") == "sensor.completed")
+        self.assertEqual(completed["name"], "Letzte Ladung")
+        self.assertFalse(any(card.get("entity") == "sensor.live" for card in overview))
+        current = next(card for card in overview if "Energiewert ausstehend" in card.get("card", {}).get("content", ""))
+        self.assertEqual(current["conditions"][0]["state"], "Lädt")
+
     def test_only_daily_counter_supplies_statistics(self):
         config=builder.build_dashboard([builder.WallboxDashboard('A','Garage','g2T',
             {'today_energy':'sensor.day','last_energy':'sensor.session'}, energy_statistics=True)])

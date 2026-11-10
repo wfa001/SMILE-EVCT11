@@ -133,5 +133,64 @@ class G2TDailyEnergyTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(reloaded.native_value, 2.25)
 
 
+class LastChargeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_delayed_final_value_is_kept_when_counter_disappears_and_after_reload(self):
+        from test_wallbox_communication import NS, coordinator_with
+
+        coordinator = coordinator_with({"status": "Charging", "power": 656})
+        sensor_type = NS["AlphaESSWallboxLastChargeSensor"]
+        sensor = sensor_type(coordinator, None)
+        self.assertIsNone(sensor.native_value)
+        self.assertIsNone(sensor.extra_state_attributes["Aktuelle Ladung (kWh)"])
+        for state, energy, expected in (
+            ("Charging", 12.50, None),
+            ("WaitingForChargingPile", 12.50, 12.50),
+            ("WaitingForChargingPile", "12.97", 12.97),
+            ("InsufficientPower", 0, 12.97),
+            ("NotInsertedGun", None, 12.97),
+        ):
+            with self.subTest(state=state, energy=energy):
+                coordinator.data["wallbox_status"] = {"status": state}
+                if energy is not None:
+                    coordinator.data["wallbox_status"]["lastChargingAmount"] = energy
+                self.assertEqual(sensor.native_value, expected)
+
+        reloaded = sensor_type(coordinator, None)
+        reloaded.previous = sensor.extra_restore_state_data
+        await reloaded.async_added_to_hass()
+        self.assertEqual(reloaded.native_value, 12.97)
+        for invalid in (None, "invalid", "nan", -2, True):
+            coordinator.data["wallbox_status"]["lastChargingAmount"] = invalid
+            with self.assertLogs(NS["_LOGGER"], level="DEBUG"):
+                reloaded._last_energy_trace = None
+                self.assertEqual(reloaded.native_value, 12.97)
+
+    async def test_new_charge_keeps_previous_value_while_current_energy_is_pending(self):
+        from test_wallbox_communication import NS, coordinator_with
+
+        coordinator = coordinator_with({"status": "ChargingStopped", "lastChargingAmount": 12.97}, generation="g1T")
+        sensor_type = NS["AlphaESSWallboxLastChargeSensor"]
+        sensor = sensor_type(coordinator, None)
+        self.assertEqual(sensor.native_value, 12.97)
+        coordinator.data["wallbox_status"] = {"status": "Charging", "lastChargingAmount": 12.97}
+        self.assertEqual(sensor.native_value, 12.97)
+        self.assertIsNone(sensor.extra_state_attributes["Aktuelle Ladung (kWh)"])
+        coordinator.data["wallbox_status"]["lastChargingAmount"] = 2.25
+        self.assertEqual(sensor.native_value, 12.97)
+        self.assertEqual(sensor.extra_state_attributes["Aktuelle Ladung (kWh)"], 2.25)
+
+        reloaded = sensor_type(coordinator, None)
+        reloaded.previous = sensor.extra_restore_state_data
+        await reloaded.async_added_to_hass()
+        coordinator.data["wallbox_status"] = {"status": "Fault"}
+        self.assertEqual(reloaded.native_value, 12.97)
+        coordinator.data["wallbox_status"] = {"status": "NotInsertedGun"}
+        coordinator.data["wallbox_status_source"] = "system"
+        self.assertEqual(reloaded.native_value, 12.97)
+        coordinator.data["wallbox_status_source"] = "real_status"
+        self.assertEqual(reloaded.native_value, 2.25)
+        self.assertIsNone(reloaded.extra_state_attributes["Aktuelle Ladung (kWh)"])
+
+
 if __name__ == "__main__":
     unittest.main()

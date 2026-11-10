@@ -6,11 +6,11 @@ Cloud-Abfragen, Sensoren, Ladeautomationen oder nachträglich berechnete Zähler
 
 ## Änderungen
 
-- Die gleich hohen Energiekacheln zeigen **Heute geladen** und **Ladesitzung**
+- Die gleich hohen Energiekacheln zeigen **Heute geladen** und **Letzte Ladung**
   mit unterschiedlichen Symbolen. Ist nur eine vorhanden, nutzt sie die volle
-  Breite. Eine kurze, eingeklappte Hilfe erklärt: Der Sitzungswert kann zur
-  laufenden oder letzten Sitzung gehören und ist kein dauerhaft archivierter
-  letzter Ladevorgang. Sensor-IDs, Messwerte und Zählerlogik bleiben erhalten.
+  Breite. Die letzte Ladung bleibt lokal gespeichert. Während eines neuen
+  Ladevorgangs zeigt ein separater Hinweis den aktuellen Sitzungswert, sobald
+  das Portal ihn meldet. Die bestehenden Live-Sensoren behalten ihre IDs.
 - Die große Leistungskurve steht weiterhin oben im Verlauf und zeigt zwölf
   Stunden über die volle Breite. Die Achse beginnt bei null und darf sich bei
   abweichenden Daten erweitern; Einheiten werden vom Sensor übernommen.

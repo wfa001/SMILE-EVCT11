@@ -64,9 +64,10 @@ Status der letzten Einstellungsübertragung. Unbekannte Rohcodes, freie
 Statuswerte, Modelltexte, Kalenderzeitpunkte und Ladewerte werden dadurch nicht
 in den normalen Export übernommen. Die bisherigen Felder bleiben erhalten.
 
-Die erweiterte Diagnose bleibt eine einmalige, fünf Minuten gültige Freigabe.
-Sie verwendet weiterhin die vorhandene Schwärzung und den Hinweis zur Prüfung
-vor dem Teilen. Es gibt keine zusätzlichen Portalabfragen, automatischen
+Im Dashboard können Administratoren die erweiterte Diagnose direkt als ZIP
+herunterladen. Ohne Dashboard bleibt die einmalige, fünf Minuten gültige
+Freigabe verfügbar. Der Export maskiert bekannte sensible Werte. Es gibt keine
+zusätzlichen Portalabfragen, automatischen
 Reparatur-/Resetbefehle oder Änderungen an Ladeeinstellungen.
 
 ## Prüfung

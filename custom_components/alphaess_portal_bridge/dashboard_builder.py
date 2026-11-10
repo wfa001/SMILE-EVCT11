@@ -237,19 +237,28 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
             left.append(_condition(_note("> ⚠️ **Keine Kommunikation zwischen Wallbox und Energiespeichersystem**"), entity,
                                    "Keine Kommunikation zwischen Wallbox und Energiespeichersystem"))
         left.append(_tile(entity, "Status", icon="mdi:ev-station"))
-    energy_count = sum(bool(e.get(key)) for key in ('today_energy', 'last_energy'))
+    last_completed = e.get("last_completed_energy")
+    session_key = "last_completed_energy" if last_completed else "last_energy"
+    energy_count = sum(bool(e.get(key)) for key in ("today_energy", session_key))
     for key, name, icon in (("today_energy", "Heute geladen", "mdi:calendar-today"),
-                            ("last_energy", "Ladesitzung", "mdi:ev-plug-type2")):
+                            (session_key, "Letzte Ladung" if last_completed else "Ladesitzung", "mdi:ev-plug-type2")):
         if entity := e.get(key):
             card = _tile(entity, name, icon=icon, columns=6 if energy_count == 2 else 12)
             card["grid_options"]["rows"] = 1
             left.append(card)
+    if last_completed and (status_entity := e.get("status")):
+        left.append(_condition(_note(
+            f"{{% set kwh = state_attr('{last_completed}', 'Aktuelle Ladung (kWh)') %}}"
+            "**Aktuelle Ladung:** {{ 'Energiewert ausstehend' if kwh is none "
+            "else (kwh | string | replace('.', ',')) ~ ' kWh' }}"
+        ), status_entity, "Lädt"))
     if energy_count:
         left.append(_help("Energieangaben erklärt",
-            "**Heute geladen:** Tageszähler des Portals. "
-            "**Ladesitzung:** Energie der aktuellen oder letzten Sitzung; "
-            "kein dauerhaft gespeicherter letzter Ladevorgang. "
-            "Unbekannte Werte bleiben unbekannt."))
+            "**Heute geladen:** Tageszähler des Portals. " + (
+                "**Letzte Ladung:** Zuletzt gemeldeter Sitzungswert, lokal gespeichert. "
+                "Das Portal kann den Wert nach Ladeende noch aktualisieren."
+                if last_completed else "**Ladesitzung:** Live-Wert der aktuellen oder letzten Sitzung."
+            )))
     rows = [{"entity": e[key], "name": name, "icon": icon} for key, name, icon in (
         ("vehicle_connected", "Fahrzeug angeschlossen", "mdi:car-electric"),
         ("gun_locked", "Ladestecker verriegelt", "mdi:lock"),
