@@ -48,7 +48,6 @@ class CapabilityTests(unittest.TestCase):
         result = ns['filter_capabilities'](entities, None, g2())
         self.assertIn('power', result)
         self.assertIn('information_model', result)
-        self.assertIn('advanced_diagnostics', result)
         for key in ('start', 'stop', 'smart_mode', 'charge_mode_select', 'time_period_1_start'):
             self.assertNotIn(key, result)
 

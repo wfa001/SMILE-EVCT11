@@ -12,6 +12,7 @@ import logging
 
 from datetime import timedelta
 
+from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
@@ -34,7 +35,7 @@ from .const import (
     UPDATE_INTERVAL_OPTIONS,
 )
 from .coordinator import AlphaESSWallboxCoordinator
-from .diagnostics_archive import DiagnosticsArchiveView
+from .diagnostics_archive import DiagnosticsArchiveView, DiagnosticsDownloadView
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_setup(hass: HomeAssistant, config: dict[str, object]) -> bool:
     """Register profile images and the advanced diagnostics download."""
     hass.http.register_view(DiagnosticsArchiveView(hass))
+    hass.http.register_view(DiagnosticsDownloadView(hass))
 
     async def prune_history(_now=None) -> None:
         await hass.async_add_executor_job(purge_expired_archives, hass.config.path(".storage"))
@@ -74,8 +76,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, object]) -> bool:
     await prune_history()
     async_track_time_interval(hass, prune_history, timedelta(hours=1))
     image_dir = Path(__file__).parent
+    download_card_url = f"/api/{DOMAIN}/frontend/diagnostics-download.js"
     await hass.http.async_register_static_paths(
         [
+            StaticPathConfig(
+                download_card_url, str(image_dir / "diagnostics-download.js"), cache_headers=False,
+            ),
             StaticPathConfig(
                 f"/api/{DOMAIN}/profiles/g1t.png",
                 str(image_dir / "g1t.png"),
@@ -91,6 +97,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, object]) -> bool:
     try:
         from .dashboard import DashboardExportView
 
+        add_extra_js_url(hass, download_card_url)
         hass.http.register_view(DashboardExportView(hass))
     except Exception:
         _LOGGER.exception("Dashboard export unavailable; wallbox setup continues")

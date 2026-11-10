@@ -1,15 +1,17 @@
-"""Authenticated one-time ZIP download for the advanced diagnostics button."""
+"""Authenticated diagnostic ZIP downloads."""
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 import time
+from zoneinfo import ZoneInfo
 
 from aiohttp import web
 
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.components.http.const import KEY_HASS_USER
 
-from .const import DIAGNOSTICS_ARCHIVE_PATH, DOMAIN
+from .const import DIAGNOSTICS_ARCHIVE_PATH, DIAGNOSTICS_DOWNLOAD_PATH, DOMAIN
 from .diagnostics import async_get_config_entry_diagnostics
 
 _LOGGER = logging.getLogger(__name__)
@@ -21,9 +23,11 @@ class DiagnosticsArchiveView(HomeAssistantView):
     url = DIAGNOSTICS_ARCHIVE_PATH + "/{entry_id}"
     name = f"api:{DOMAIN}:diagnostics-archive"
     requires_auth = True
+    requires_grant = True
 
     def __init__(self, hass):
         self.hass = hass
+        self._active: set[str] = set()
 
     async def get(self, request, entry_id: str):
         if not request[KEY_HASS_USER].is_admin:
@@ -32,12 +36,27 @@ class DiagnosticsArchiveView(HomeAssistantView):
         coordinator = self.hass.data.get(DOMAIN, {}).get(entry_id)
         if entry is None or coordinator is None:
             raise web.HTTPNotFound()
-        grant = coordinator._advanced_diagnostics_until
-        if grant <= time.monotonic():
-            raise web.HTTPForbidden(text="Erweiterte API-Diagnose erneut freigeben.")
+        if entry_id in self._active:
+            raise web.HTTPConflict(text="Ein Diagnose-Export läuft bereits.")
+        grant = None
+        if self.requires_grant:
+            grant = coordinator._advanced_diagnostics_until
+            if grant <= time.monotonic():
+                raise web.HTTPForbidden(text="Erweiterte API-Diagnose erneut freigeben.")
+            coordinator._advanced_diagnostics_until = 0.0
 
-        # Reserve before the first await so two downloads cannot use one grant.
-        coordinator._advanced_diagnostics_until = 0.0
+        self._active.add(entry_id)
+        try:
+            return await self._download(request, entry, coordinator)
+        except web.HTTPServiceUnavailable:
+            if grant is not None and coordinator._advanced_diagnostics_until == 0.0 and grant > time.monotonic():
+                coordinator._advanced_diagnostics_until = grant
+            raise
+        finally:
+            self._active.remove(entry_id)
+
+    async def _download(self, request, entry, coordinator):
+        stamp = datetime.now(ZoneInfo(self.hass.config.time_zone)).strftime("%Y-%m-%d_%H-%M-%S")
         try:
             summary = await async_get_config_entry_diagnostics(
                 self.hass, entry, include_archive_link=False
@@ -58,14 +77,12 @@ class DiagnosticsArchiveView(HomeAssistantView):
                 "latest_charge_report": data.get("latest_report"),
             })
         except Exception:
-            if coordinator._advanced_diagnostics_until == 0.0 and grant > time.monotonic():
-                coordinator._advanced_diagnostics_until = grant
             _LOGGER.warning("Could not prepare the AlphaESS diagnostics archive")
             raise web.HTTPServiceUnavailable() from None
 
         response = web.StreamResponse(headers={
             "Content-Type": "application/zip",
-            "Content-Disposition": 'attachment; filename="alphaess-wallbox-diagnose.zip"',
+            "Content-Disposition": f'attachment; filename="alphaess-wallbox-diagnose_{stamp}.zip"',
             "Cache-Control": "no-store",
         })
         try:
@@ -76,3 +93,11 @@ class DiagnosticsArchiveView(HomeAssistantView):
         finally:
             await self.hass.async_add_executor_job(archive.close)
         return response
+
+
+class DiagnosticsDownloadView(DiagnosticsArchiveView):
+    """Dashboard downloads are authorized by the current HA administrator."""
+
+    url = DIAGNOSTICS_DOWNLOAD_PATH + "/{entry_id}"
+    name = f"api:{DOMAIN}:diagnostics-download"
+    requires_grant = False
