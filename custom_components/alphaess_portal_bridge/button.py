@@ -101,10 +101,8 @@ class AlphaESSAdvancedDiagnosticsButton(AlphaESSWallboxEntity, ButtonEntity):
         expires = dt_util.now() + timedelta(minutes=5)
         persistent_notification.async_create(
             self.hass,
-            f"Einmaliger ZIP-Download bis **{expires:%H:%M:%S} Uhr**. Lade das Wallbox-Dashboard neu "
-            "und drücke unter **Einstellungen** auf **Diagnose als ZIP herunterladen**. "
-            "Bei ausgeblendetem Dashboard enthält der normale Diagnosedownload während "
-            "der Freigabe den ZIP-Link im Feld `advanced_archive_download`.",
+            f"Einmaliger ZIP-Download bis **{expires:%H:%M:%S} Uhr**. Der normale Diagnosedownload "
+            "enthält während der Freigabe den ZIP-Link im Feld `advanced_archive_download`.",
             title="Erweiterte API-Diagnose freigegeben",
             notification_id=self._notification_id,
         )

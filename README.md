@@ -43,13 +43,14 @@ Der Diagnose-Sensor **Portal-Profil** zeigt das erkannte Profil und das dazugeh�
 Die Bridge speichert standardmäßig bis zu 24 Stunden API-Diagnosedaten lokal
 pro Eintrag. Die Einstellung **API-Diagnoseverlauf für 24 Stunden lokal
 aufzeichnen** unter **Optionen** schaltet die Aufzeichnung ab. Normale
-Diagnosen bleiben kompakt. Für die ZIP im Dashboard unter **Einstellungen**
-**Erweiterte API-Diagnose freigeben** drücken, die Ansicht neu laden und dann
-**Diagnose als ZIP herunterladen** drücken. Administratoren können
-die ZIP während der Freigabe einmalig innerhalb von fünf Minuten herunterladen.
+Diagnosen bleiben kompakt. Administratoren starten den Export im
+Wallbox-Dashboard unter **Einstellungen → Diagnose als ZIP herunterladen**.
+Die Karte zeigt an, wenn die ZIP erstellt und übertragen wird. Der Dateiname
+enthält Datum und Uhrzeit in der Zeitzone von Home Assistant.
 
-Bei ausgeblendetem Dashboard enthält die normale Diagnosedatei während der
-Freigabe den privaten Downloadlink `advanced_archive_download`. Diesen im
+Bei ausgeblendetem Dashboard steht am Gerät **Erweiterte API-Diagnose
+freigeben** zur Verfügung. Danach enthält die normale Diagnosedatei fünf
+Minuten lang einen einmal nutzbaren Downloadlink `advanced_archive_download`. Diesen im
 Browser an die eigene Home-Assistant-Adresse anhängen. Die ZIP enthält
 Betriebs- und Ladedaten, einschließlich Zeitpunkten und Energiemengen.
 Für Support privat weitergeben.

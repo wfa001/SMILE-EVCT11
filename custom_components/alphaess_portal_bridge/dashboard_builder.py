@@ -23,7 +23,7 @@ class WallboxDashboard:
     power_unit: str = "W"
     energy_statistics: bool = False
     export_url: str | None = None
-    diagnostics_url: str | None = None
+    diagnostics_path: str | None = None
 
 
 def _heading(text: str, icon: str = "mdi:ev-station") -> dict:
@@ -380,19 +380,12 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
         ("information_startUpPower", "Startleistung")) if key in e]
     if details:
         info.append({"type": "entities", "title": "Geräteinformationen", "entities": details})
-    if entity := e.get("advanced_diagnostics"):
-        info.append({"type": "entities", "entities": [{"entity": entity, "name": "Erweiterte API-Diagnose freigeben"}]})
-    if not export and box.diagnostics_url and e.get("advanced_diagnostics"):
+    if not export and box.diagnostics_path:
         info.append({
-            "type": "button",
-            "name": "Diagnose als ZIP herunterladen",
-            "icon": "mdi:download",
-            "tap_action": {"action": "url", "url_path": box.diagnostics_url},
+            "type": "custom:alphaess-diagnostics-download",
+            "path": box.diagnostics_path,
             "grid_options": {"columns": 12, "rows": 2},
         })
-        info.append(_help("Erweiterte Diagnose herunterladen",
-            "Drücke oben **Erweiterte API-Diagnose freigeben**, lade die Dashboard-Seite neu "
-            "und drücke innerhalb von fünf Minuten **Diagnose als ZIP herunterladen**."))
     if not export and box.export_url:
         info.append(_note(f"[Dashboard als Vorlage herunterladen]({box.export_url})"))
         info.append(_help("Vorlage verwenden",

@@ -42,7 +42,7 @@ def adapter_namespace(hass=None):
         'logging': __import__('logging'), 'timedelta': __import__('datetime').timedelta,
         'DOMAIN': 'alphaess_portal_bridge', 'CONF_SYSTEM_SERIAL': 'system_serial',
         'CONF_SHOW_DASHBOARD': 'show_dashboard',
-        "DIAGNOSTICS_ARCHIVE_PATH": "/api/alphaess_portal_bridge/diagnostics/archive",
+        "DIAGNOSTICS_DOWNLOAD_PATH": "/api/alphaess_portal_bridge/diagnostics/download",
         'MODE_YAML': 'yaml', 'LOVELACE_DATA': 'lovelace',
         'callback': lambda fn: fn, 'LovelaceConfig': Base, 'HomeAssistantView': object,
         'frontend': SimpleNamespace(async_panel_exists=lambda h,p:p in panels,
@@ -260,20 +260,16 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn('/api/',exported)
         self.assertNotIn('/alphaess-wallbox-bridge/',exported)
 
-    def test_zip_download_uses_a_browser_url_action_and_stays_out_of_templates(self):
-        url = "/api/alphaess_portal_bridge/diagnostics/archive/A?authSig=signature"
+    def test_managed_dashboard_has_one_download_card_and_keeps_it_out_of_templates(self):
+        path = "/api/alphaess_portal_bridge/diagnostics/download/A"
         box = builder.WallboxDashboard(
-            "A", "Garage", "g2T", {"advanced_diagnostics": "button.diagnostics"},
-            diagnostics_url=url,
+            "A", "Garage", "g2T", {}, diagnostics_path=path,
         )
         managed = builder.build_dashboard([box])
-        download = next(
-            card for card in cards(managed)
-            if card.get("name") == "Diagnose als ZIP herunterladen"
-        )
-        self.assertEqual(download["type"], "button")
-        self.assertEqual(download["tap_action"], {"action": "url", "url_path": url})
-        self.assertNotIn(url, json.dumps(builder.build_dashboard([box], export=True)))
+        [download] = [card for card in cards(managed) if card.get("type") == "custom:alphaess-diagnostics-download"]
+        self.assertEqual(download["path"], path)
+        self.assertNotIn("freigeben", json.dumps(managed))
+        self.assertNotIn(path, json.dumps(builder.build_dashboard([box], export=True)))
 
     def test_download_requires_authentication_and_unknown_entries_fail_closed(self):
         ns=adapter_namespace()

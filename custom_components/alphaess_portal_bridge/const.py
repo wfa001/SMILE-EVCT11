@@ -9,6 +9,7 @@
 DOMAIN = "alphaess_portal_bridge"
 CONF_RECORD_API_HISTORY = "record_api_history"
 DIAGNOSTICS_ARCHIVE_PATH = f"/api/{DOMAIN}/diagnostics/archive"
+DIAGNOSTICS_DOWNLOAD_PATH = f"/api/{DOMAIN}/diagnostics/download"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 CONF_AUTHENTICATION_PAUSED = "authentication_paused"

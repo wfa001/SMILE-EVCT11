@@ -1,5 +1,6 @@
 """Verify retention, restart, privacy and export of the rolling API archive."""
 import asyncio
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import runpy
@@ -8,6 +9,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "alphaess_portal_bridge"
 storage = runpy.run_path(str(ROOT / "api_history.py"))
@@ -157,19 +159,24 @@ class ArchiveDownloadTests(unittest.IsolatedAsyncioTestCase):
             return {}
 
         module = ast.parse((ROOT / "diagnostics_archive.py").read_text())
-        node = next(node for node in module.body if isinstance(node, ast.ClassDef))
+        nodes = [node for node in module.body if isinstance(node, ast.ClassDef)]
+        export_time = datetime(2026, 11, 10, 7, 36, 25, tzinfo=timezone.utc)
         ns = {
             "HomeAssistantView": object,
             "KEY_HASS_USER": "user",
             "DOMAIN": "bridge",
             "DIAGNOSTICS_ARCHIVE_PATH": "/api/bridge/archive",
+            "DIAGNOSTICS_DOWNLOAD_PATH": "/api/bridge/download",
             "web": SimpleNamespace(
-                HTTPForbidden=HttpError, HTTPNotFound=HttpError, StreamResponse=Response
+                HTTPForbidden=HttpError, HTTPNotFound=HttpError, HTTPConflict=HttpError,
+                HTTPServiceUnavailable=HttpError, StreamResponse=Response,
             ),
             "time": SimpleNamespace(monotonic=lambda: self.now),
+            "datetime": SimpleNamespace(now=export_time.astimezone),
+            "ZoneInfo": ZoneInfo,
             "async_get_config_entry_diagnostics": summary,
         }
-        exec(compile(ast.Module(body=[node], type_ignores=[]), "<archive view>", "exec"), ns)
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), "<archive view>", "exec"), ns)
 
         async def export(*args):
             return BytesIO(b"zip")
@@ -183,12 +190,14 @@ class ArchiveDownloadTests(unittest.IsolatedAsyncioTestCase):
                 _find_wallbox_data=lambda *args: {},
             ),
         )
-        self.view = ns[node.name](SimpleNamespace(
+        hass = SimpleNamespace(
             data={"bridge": {"entry": self.coordinator}},
             config_entries=SimpleNamespace(async_get_entry=lambda entry_id: object()),
             config=SimpleNamespace(time_zone="Europe/Berlin", as_dict=lambda: {"version": "test"}),
             async_add_executor_job=asyncio.to_thread,
-        ))
+        )
+        self.view = ns["DiagnosticsArchiveView"](hass)
+        self.direct_view = ns["DiagnosticsDownloadView"](hass)
         self.HttpError = HttpError
 
     async def test_requires_admin_and_uses_the_grant_once(self):
@@ -205,3 +214,16 @@ class ArchiveDownloadTests(unittest.IsolatedAsyncioTestCase):
         self.now = 201
         with self.assertRaises(self.HttpError):
             await self.view.get(admin, "entry")
+
+    async def test_dashboard_download_needs_admin_but_no_grant_and_dates_the_zip(self):
+        self.coordinator._advanced_diagnostics_until = 0
+        with self.assertRaises(self.HttpError):
+            await self.direct_view.get({"user": SimpleNamespace(is_admin=False)}, "entry")
+        admin = {"user": SimpleNamespace(is_admin=True)}
+        result = await self.direct_view.get(admin, "entry")
+        self.assertEqual(
+            result.headers["Content-Disposition"],
+            'attachment; filename="alphaess-wallbox-diagnose_2026-11-10_08-36-25.zip"',
+        )
+        self.assertEqual(result.data, b"zip")
+        self.assertEqual(self.coordinator._advanced_diagnostics_until, 0)

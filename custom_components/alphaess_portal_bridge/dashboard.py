@@ -21,7 +21,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.json import cached_json_fragment
 
-from .const import CONF_SHOW_DASHBOARD, CONF_SYSTEM_SERIAL, DIAGNOSTICS_ARCHIVE_PATH, DOMAIN
+from .const import CONF_SHOW_DASHBOARD, CONF_SYSTEM_SERIAL, DIAGNOSTICS_DOWNLOAD_PATH, DOMAIN
 from .dashboard_builder import WallboxDashboard, build_dashboard
 from .dashboard_capabilities import supported_dashboard_controls
 from .entity import settings_object
@@ -42,7 +42,7 @@ ENTITY_DOMAINS = {
     **{key: "select" for key in ("charge_mode_select", "charge_strategy_select", "obc_phase_select")},
     **{key: "number" for key in ("custom_charge_current", "household_current")},
     **{key: "switch" for key in ("smart_mode", "installer_control_allowed", "gun_line_self_lock_enabled")},
-    **{key: "button" for key in ("start", "stop", "advanced_diagnostics")},
+    **{key: "button" for key in ("start", "stop")},
 }
 for _index in range(1, 4):
     for _suffix, _domain in (("start", "time"), ("end", "time"), ("enabled", "switch"),
@@ -70,7 +70,7 @@ def filter_capabilities(entities: dict[str, str], profile: str | None,
     supported = supported_dashboard_controls(profile, settings)
     return {key: entity for key, entity in entities.items()
             if ENTITY_DOMAINS.get(key) not in {"select", "number", "switch", "time", "button"}
-            or key == "advanced_diagnostics" or key in supported}
+            or key in supported}
 
 
 class ManagedDashboard(LovelaceConfig):
@@ -173,9 +173,7 @@ class DashboardManager:
                 settings=settings, power_unit=power.attributes.get("unit_of_measurement", "W") if power else "W",
                 energy_statistics=bool(energy and energy.attributes.get("state_class") == "total_increasing"),
                 export_url=url,
-                diagnostics_url=None if export else async_sign_path(
-                    self.hass, f"{DIAGNOSTICS_ARCHIVE_PATH}/{entry.entry_id}", timedelta(minutes=5)
-                ),
+                diagnostics_path=None if export else f"{DIAGNOSTICS_DOWNLOAD_PATH}/{entry.entry_id}",
             ))
         # An exported independent dashboard navigates within itself, not back to the managed panel.
         config = build_dashboard(boxes, url_path=self.url_path, export=export)
