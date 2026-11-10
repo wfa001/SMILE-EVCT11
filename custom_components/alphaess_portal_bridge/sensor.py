@@ -22,6 +22,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
+from .wallbox_diagnosis import coordinator_diagnosis
 from .entity import (
     G1_MODES,
     G2_MODES,
@@ -54,6 +55,7 @@ async def async_setup_entry(
         [
             AlphaESSWallboxStatusSensor(coordinator, entry),
             AlphaESSBridgeConnectionSensor(coordinator, entry),
+            AlphaESSWallboxDiagnosisSensor(coordinator, entry),
             AlphaESSWallboxPowerSensor(coordinator, entry),
             AlphaESSYesNoSensor(coordinator, entry, "Fahrzeug angeschlossen", "vehicle_connected"),
             AlphaESSYesNoSensor(coordinator, entry, "Ladestecker verriegelt", "gun_locked"),
@@ -122,6 +124,38 @@ class AlphaESSBridgeConnectionSensor(AlphaESSWallboxEntity, SensorEntity):
             "Letzter API-Fehler": coordinator._last_api_error,
             "Live-Endpunkt unterstützt": coordinator._live_status_supported,
         }
+
+
+class AlphaESSWallboxDiagnosisSensor(AlphaESSWallboxEntity, SensorEntity):
+    """Keep a bounded diagnosis visible when cloud/device state is uncertain."""
+
+    _attr_name = 'Wallbox-Diagnose'
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = 'mdi:stethoscope'
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, 'diagnosis')
+
+    @property
+    def available(self):
+        return True
+
+    @property
+    def native_value(self):
+        return coordinator_diagnosis(self.coordinator, self.wallbox)['summary']
+
+    @property
+    def extra_state_attributes(self):
+        result = coordinator_diagnosis(self.coordinator, self.wallbox)
+        return {'Portal-Verbindung': result['portal'],
+                'Statusrückmeldung': result['communication'],
+                'Fehlerstatus': result['fault_status'],
+                'Datenquelle': result['source'],
+                'Status aktuell auswertbar': result['fresh'],
+                'Alter der Statusantwort (s)': result['status_age_seconds'],
+                'Fehlercode (Portal)': result['raw_code'],
+                'Fehlerhinweis': result['fault_explanation'],
+                'Code-Zuordnung': 'Hersteller-Fehlername' if result['recognized_name'] else 'Nicht bestätigt'}
 
 
 class AlphaESSWallboxStatusSensor(AlphaESSWallboxEntity, SensorEntity):
