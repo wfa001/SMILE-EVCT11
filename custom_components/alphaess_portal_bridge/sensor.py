@@ -22,6 +22,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
+from .wallbox_diagnosis import coordinator_diagnosis
 from .entity import (
     G1_MODES,
     G2_MODES,
@@ -33,6 +34,20 @@ from .entity import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+_ENERGY_STATUS = (
+    "NotInsertedGun", "PendingStart", "Charging", "ChargingStopped",
+    "CharingStopped", "InsufficientPower", "WaitingForChargingPile",
+)
+
+
+def _finite_energy(raw: Any) -> float | None:
+    if type(raw) not in (int, float, str):
+        return None
+    try:
+        number = float(raw)
+    except (ValueError, OverflowError):
+        return None
+    return number if isfinite(number) else None
 
 
 def _first_value(data: dict[str, Any] | None, *keys: str) -> Any:
@@ -54,11 +69,13 @@ async def async_setup_entry(
         [
             AlphaESSWallboxStatusSensor(coordinator, entry),
             AlphaESSBridgeConnectionSensor(coordinator, entry),
+            AlphaESSWallboxDiagnosisSensor(coordinator, entry),
             AlphaESSWallboxPowerSensor(coordinator, entry),
             AlphaESSYesNoSensor(coordinator, entry, "Fahrzeug angeschlossen", "vehicle_connected"),
             AlphaESSYesNoSensor(coordinator, entry, "Ladestecker verriegelt", "gun_locked"),
             AlphaESSWallboxDailyEnergySensor(coordinator, entry),
             AlphaESSWallboxEnergySensor(coordinator, entry, "Aktuelle / letzte Ladesitzung", "lastChargingAmount", "last_energy"),
+            AlphaESSWallboxLastChargeSensor(coordinator, entry),
             AlphaESSWallboxModeSensor(coordinator, entry),
             AlphaESSWallboxGenerationSensor(coordinator, entry),
             AlphaESSWallboxInformationSensor(coordinator, entry, "Serialnummer", "sn"),
@@ -122,6 +139,38 @@ class AlphaESSBridgeConnectionSensor(AlphaESSWallboxEntity, SensorEntity):
             "Letzter API-Fehler": coordinator._last_api_error,
             "Live-Endpunkt unterstützt": coordinator._live_status_supported,
         }
+
+
+class AlphaESSWallboxDiagnosisSensor(AlphaESSWallboxEntity, SensorEntity):
+    """Keep a bounded diagnosis visible when cloud/device state is uncertain."""
+
+    _attr_name = 'Wallbox-Diagnose'
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = 'mdi:stethoscope'
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, 'diagnosis')
+
+    @property
+    def available(self):
+        return True
+
+    @property
+    def native_value(self):
+        return coordinator_diagnosis(self.coordinator, self.wallbox)['summary']
+
+    @property
+    def extra_state_attributes(self):
+        result = coordinator_diagnosis(self.coordinator, self.wallbox)
+        return {'Portal-Verbindung': result['portal'],
+                'Statusrückmeldung': result['communication'],
+                'Fehlerstatus': result['fault_status'],
+                'Datenquelle': result['source'],
+                'Status aktuell auswertbar': result['fresh'],
+                'Alter der Statusantwort (s)': result['status_age_seconds'],
+                'Fehlercode (Portal)': result['raw_code'],
+                'Fehlerhinweis': result['fault_explanation'],
+                'Code-Zuordnung': 'Hersteller-Fehlername' if result['recognized_name'] else 'Nicht bestätigt'}
 
 
 class AlphaESSWallboxStatusSensor(AlphaESSWallboxEntity, SensorEntity):
@@ -267,14 +316,10 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         # Explicit null/invalid values, unknown profiles and failed reads remain unknown.
         if self._key in {"chargingAmount", "lastChargingAmount"} and self._key not in status:
             generation, _settings = settings_object(self.coordinator)
-            normal_states = {
-                "NotInsertedGun", "PendingStart", "Charging", "ChargingStopped",
-                "CharingStopped", "InsufficientPower", "WaitingForChargingPile",
-            }
             if (
                 generation in {"g1T", "g2T"}
                 and data.get("wallbox_status_source") == "real_status"
-                and status.get("status") in normal_states
+                and status.get("status") in _ENERGY_STATUS
                 and getattr(self.coordinator, "last_update_success", True)
                 and not getattr(self.coordinator, "_live_refresh_errors", 0)
                 and not getattr(self.coordinator, "_full_consecutive_errors", 0)
@@ -296,12 +341,12 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
             field = "missing"
         elif raw is None:
             field = "null"
-        elif type(raw) in (int, float) and value is not None and isfinite(value):
-            field = f"number({raw!r})"
-        elif isinstance(raw, str) and value is not None and isfinite(value):
-            field = f"numeric string({float(raw)!r})"
-        else:
+        elif (number := _finite_energy(raw)) is None:
             field = "invalid"
+        elif type(raw) in (int, float):
+            field = f"number({raw!r})"
+        else:
+            field = f"numeric string({number!r})"
 
         source = data.get("wallbox_status_source")
         source = source if source in ("real_status", "system") else "unknown"
@@ -314,6 +359,7 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
             self._last_energy_trace = trace
             if history:
                 history.record("bridge", event="energy_sensor", field=self._key,
+                               sensor=type(self).__name__,
                                source=source, status=wallbox_status, input=field,
                                sensor_kwh=value)
             _LOGGER.debug(
@@ -332,6 +378,67 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
                 "Explizites null, Lesefehler und fehlender Status erhalten keinen Nullersatz. "
                 "Kein dauerhaft gespeicherter letzter Ladevorgang über Tageswechsel hinweg."
             ),
+        }
+
+
+@dataclass
+class LastChargeCheckpoint(ExtraStoredData):
+    last_kwh: float | None
+    session_kwh: float | None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"last_kwh": self.last_kwh, "session_kwh": self.session_kwh}
+
+
+class AlphaESSWallboxLastChargeSensor(AlphaESSWallboxEnergySensor, RestoreEntity):
+    """Retain the latest session energy as reported after charging stops."""
+
+    def __init__(self, coordinator: AlphaESSWallboxCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "Letzte Ladung", "lastChargingAmount", "last_completed_energy")
+        self._last_kwh: float | None = None
+        self._session_kwh: float | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if previous := await self.async_get_last_extra_data():
+            saved = previous.as_dict()
+            last = _finite_energy(saved.get("last_kwh"))
+            session = _finite_energy(saved.get("session_kwh"))
+            self._last_kwh = last if last and last > 0 else None
+            self._session_kwh = session if session and session > 0 else None
+
+    @property
+    def extra_restore_state_data(self) -> ExtraStoredData:
+        return LastChargeCheckpoint(self._last_kwh, self._session_kwh)
+
+    @property
+    def native_value(self) -> float | None:
+        if not isinstance((self.coordinator.data or {}).get("wallbox_status"), dict):
+            return self._last_kwh
+        return super().native_value
+
+    def _energy_value(self, data: dict[str, Any], status: dict[str, Any]) -> float | None:
+        if data.get("wallbox_status_source") != "real_status" or status.get("status") not in _ENERGY_STATUS:
+            return self._last_kwh
+
+        value = _finite_energy(status.get(self._key))
+        if value is not None and value <= 0:
+            value = None
+        if status["status"] == "Charging":
+            # The first reply for a new charge can still contain the previous value.
+            if value is not None and (self._session_kwh is not None or value != self._last_kwh):
+                self._session_kwh = value
+        else:
+            # The portal can deliver the final reading several minutes after power drops.
+            self._last_kwh = value or self._session_kwh or self._last_kwh
+            self._session_kwh = None
+        return self._last_kwh
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "Quelle": "Portal real-status: lastChargingAmount, lokal gespeichert",
+            "Aktuelle Ladung (kWh)": self._session_kwh,
         }
 
 

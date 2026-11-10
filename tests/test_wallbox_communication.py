@@ -47,11 +47,14 @@ def load_production():
     classes = {
         "AlphaESSWallboxStatusSensor", "AlphaESSWallboxPowerSensor",
         "AlphaESSWallboxEnergySensor", "AlphaESSWallboxDailyEnergySensor",
+        "AlphaESSWallboxLastChargeSensor", "LastChargeCheckpoint",
         "DailyEnergyCheckpoint", "AlphaESSYesNoSensor",
     }
     selected += [node for node in sensor.body if (
         isinstance(node, ast.ClassDef) and node.name in classes
-    ) or (isinstance(node, ast.FunctionDef) and node.name == "_first_value")]
+    ) or (isinstance(node, ast.FunctionDef) and node.name in {"_first_value", "_finite_energy"})
+       or (isinstance(node, ast.Assign)
+           and any(isinstance(target, ast.Name) and target.id == "_ENERGY_STATUS" for target in node.targets))]
     ns = {
         "logging": logging,
         "_LOGGER": logging.getLogger(__name__),

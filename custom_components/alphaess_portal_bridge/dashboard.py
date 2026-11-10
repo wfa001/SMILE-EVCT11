@@ -18,7 +18,9 @@ from homeassistant.components.http.auth import async_sign_path
 from homeassistant.components.lovelace.const import LOVELACE_DATA, MODE_YAML
 from homeassistant.components.lovelace.dashboard import LovelaceConfig
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import UnitOfEnergy
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.recorder import get_instance as get_recorder_instance
 from homeassistant.helpers.json import cached_json_fragment
 
 from .const import CONF_SHOW_DASHBOARD, CONF_SYSTEM_SERIAL, DIAGNOSTICS_DOWNLOAD_PATH, DOMAIN
@@ -35,8 +37,8 @@ EXPORT_PATH = f"/api/{DOMAIN}/dashboard/export"
 # name, area name, translation, system serial or account identifier is guessed.
 ENTITY_DOMAINS = {
     **{key: "sensor" for key in (
-        "status", "api_connection", "power", "vehicle_connected", "gun_locked",
-        "today_energy", "last_energy", "portal_profile", "information_model",
+        "status", "api_connection", "diagnosis", "power", "vehicle_connected", "gun_locked", "mode",
+        "today_energy", "last_energy", "last_completed_energy", "portal_profile", "information_model",
         "information_sn", "information_softwareVersion", "information_hardwareVersion",
         "information_phase", "information_startUpPower")},
     **{key: "select" for key in ("charge_mode_select", "charge_strategy_select", "obc_phase_select")},
@@ -71,6 +73,25 @@ def filter_capabilities(entities: dict[str, str], profile: str | None,
     return {key: entity for key, entity in entities.items()
             if ENTITY_DOMAINS.get(key) not in {"select", "number", "switch", "time", "button"}
             or key in supported}
+
+
+def daily_statistics_eligibility(hass, entity_id: str | None) -> tuple[bool, str | None]:
+    """Check local prerequisites, not whether historical database rows exist."""
+    state = hass.states.get(entity_id) if entity_id else None
+    if state is None:
+        return False, "Der Tageszähler ist noch nicht verfügbar."
+    attrs = state.attributes
+    if (attrs.get('device_class') != 'energy'
+            or attrs.get('state_class') != 'total_increasing'
+            or attrs.get('unit_of_measurement') not in UnitOfEnergy):
+        return False, "Der Tageszähler hat keine geeignete Energieeinheit oder Summenstatistik."
+    try:
+        recorder = get_recorder_instance(hass)
+    except KeyError:
+        return False, "Recorder ist nicht aktiv; Tagesstatistiken können nicht aufgezeichnet werden."
+    if recorder.entity_filter is not None and not recorder.entity_filter(entity_id):
+        return False, "Der Tageszähler ist von der Recorder-Aufzeichnung ausgeschlossen."
+    return True, None
 
 
 class ManagedDashboard(LovelaceConfig):
@@ -160,7 +181,8 @@ class DashboardManager:
             profile, settings = settings_object(coordinator)
             entities = filter_capabilities(resolve_entities(registry, entry), profile, settings)
             power = self.hass.states.get(entities.get("power", ""))
-            energy = self.hass.states.get(entities.get("today_energy", ""))
+            energy_statistics, energy_note = daily_statistics_eligibility(
+                self.hass, entities.get('today_energy'))
             title = entry.title
             device = dr.async_get(self.hass).async_get_device(identifiers={
                 (DOMAIN, entry.data[CONF_SYSTEM_SERIAL])})
@@ -171,7 +193,7 @@ class DashboardManager:
             boxes.append(WallboxDashboard(
                 entry_id=entry.entry_id, title=title, profile=profile, entities=entities,
                 settings=settings, power_unit=power.attributes.get("unit_of_measurement", "W") if power else "W",
-                energy_statistics=bool(energy and energy.attributes.get("state_class") == "total_increasing"),
+                energy_statistics=energy_statistics, energy_statistics_note=energy_note,
                 export_url=url,
                 diagnostics_path=None if export else f"{DIAGNOSTICS_DOWNLOAD_PATH}/{entry.entry_id}",
             ))
@@ -203,7 +225,12 @@ class DashboardManager:
         def config_changed() -> None:
             nonlocal previous
             profile, settings = settings_object(coordinator)
-            signature = (profile, tuple(sorted(filter_capabilities(ENTITY_DOMAINS, profile, settings))))
+            entities = filter_capabilities(resolve_entities(er.async_get(self.hass), entry), profile, settings)
+            energy_ready = daily_statistics_eligibility(self.hass, entities.get('today_energy'))
+            power = self.hass.states.get(entities.get('power', ''))
+            power_unit = power.attributes.get('unit_of_measurement', 'W') if power else 'W'
+            signature = (profile, tuple(sorted(filter_capabilities(ENTITY_DOMAINS, profile, settings))),
+                         energy_ready, power_unit)
             if signature != previous:
                 previous = signature
                 self.dashboard._config_updated()

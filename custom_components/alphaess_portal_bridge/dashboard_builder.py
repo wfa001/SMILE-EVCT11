@@ -24,6 +24,7 @@ class WallboxDashboard:
     energy_statistics: bool = False
     export_url: str | None = None
     diagnostics_path: str | None = None
+    energy_statistics_note: str | None = None
 
 
 def _heading(text: str, icon: str = "mdi:ev-station") -> dict:
@@ -117,7 +118,7 @@ hint must not invent a new write restriction for Standard or Fast.
             "entity_id": [entities[key] for key in keys if entities.get(key)]}
 
 
-def _graph(title: str, entities: list[tuple[str | None, str]], rows: int = 3) -> dict | None:
+def _graph(title: str, entities: list[tuple[str | None, str]], rows: int | str = 3) -> dict | None:
     resolved = [{"entity": e, "name": n} for e, n in entities if e]
     if not resolved:
         return None
@@ -168,6 +169,22 @@ def _unavailable_controls(entities: dict[str, str], profile: str | None) -> dict
             'entity_id': buttons + ([strategy] if strategy else [])}
 
 
+def _diagnosis_warning(entity: str) -> dict:
+    target = json.dumps(entity)
+    template = (
+        f"{{% if is_state({target}, 'Wallbox meldet Störung') %}}"
+        "> ⚠️ **Wallbox meldet Störung**\n> "
+        f"{{{{ state_attr({target}, 'Fehlerhinweis') or 'Details unter Einstellungen → Wallbox-Diagnose.' }}}}"
+        f"{{% elif is_state({target}, 'Keine Statusrückmeldung') %}}"
+        "> ⚠️ **Keine Statusrückmeldung**\n> Das Portal antwortet ohne Wallbox-Statusangabe."
+        f"{{% elif is_state({target}, 'Geräteverbindung getrennt gemeldet') %}}"
+        "> ⚠️ **Geräteverbindung getrennt gemeldet**"
+        f"{{% elif is_state({target}, 'Status nicht aktuell prüfbar') %}}"
+        "> ℹ️ Wallboxstatus derzeit nicht aktuell prüfbar."
+        "{% endif %}")
+    return {**_note(template), 'show_empty': False, 'entity_id': [entity]}
+
+
 def _section(cards: list, *, wide: bool = False) -> dict:
     section = {"type": "grid", "cards": [card for card in cards if card]}
     if wide:
@@ -213,15 +230,35 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
                      "grid_options": {"columns": 12, "rows": 3}})
     if api := e.get("api_connection"):
         left.append(_condition(_note("> ⚠️ **Bridge-Verbindung prüfen**\n> Aktuelle Messwerte und Steuerbefehle können eingeschränkt sein."), api, "Verbunden", invert=True))
+    if diagnosis := e.get('diagnosis'):
+        left.append(_diagnosis_warning(diagnosis))
     if entity := e.get("status"):
-        left += [_condition(_note("> ⚠️ **Keine Kommunikation zwischen Wallbox und Energiespeichersystem**"), entity,
-                            "Keine Kommunikation zwischen Wallbox und Energiespeichersystem"),
-                 _tile(entity, "Status", icon="mdi:ev-station")]
-    for key, name in (("today_energy", "Heute geladen"), ("last_energy", "Letzte Ladung")):
+        if not diagnosis:
+            left.append(_condition(_note("> ⚠️ **Keine Kommunikation zwischen Wallbox und Energiespeichersystem**"), entity,
+                                   "Keine Kommunikation zwischen Wallbox und Energiespeichersystem"))
+        left.append(_tile(entity, "Status", icon="mdi:ev-station"))
+    last_completed = e.get("last_completed_energy")
+    session_key = "last_completed_energy" if last_completed else "last_energy"
+    energy_count = sum(bool(e.get(key)) for key in ("today_energy", session_key))
+    for key, name, icon in (("today_energy", "Heute geladen", "mdi:calendar-today"),
+                            (session_key, "Letzte Ladung" if last_completed else "Ladesitzung", "mdi:ev-plug-type2")):
         if entity := e.get(key):
-            card = _tile(entity, name, columns=6)
+            card = _tile(entity, name, icon=icon, columns=6 if energy_count == 2 else 12)
             card["grid_options"]["rows"] = 1
             left.append(card)
+    if last_completed and (status_entity := e.get("status")):
+        left.append(_condition(_note(
+            f"{{% set kwh = state_attr('{last_completed}', 'Aktuelle Ladung (kWh)') %}}"
+            "**Aktuelle Ladung:** {{ 'Energiewert ausstehend' if kwh is none "
+            "else (kwh | string | replace('.', ',')) ~ ' kWh' }}"
+        ), status_entity, "Lädt"))
+    if energy_count:
+        left.append(_help("Energieangaben erklärt",
+            "**Heute geladen:** Tageszähler des Portals. " + (
+                "**Letzte Ladung:** Zuletzt gemeldeter Sitzungswert, lokal gespeichert. "
+                "Das Portal kann den Wert nach Ladeende noch aktualisieren."
+                if last_completed else "**Ladesitzung:** Live-Wert der aktuellen oder letzten Sitzung."
+            )))
     rows = [{"entity": e[key], "name": name, "icon": icon} for key, name, icon in (
         ("vehicle_connected", "Fahrzeug angeschlossen", "mdi:car-electric"),
         ("gun_locked", "Ladestecker verriegelt", "mdi:lock"),
@@ -295,23 +332,23 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
             "wenn die Bridge die Aktion für den gemeldeten Status freigibt."))
     status["sections"] += [_section(left), _section(right)]
 
-    graphs = [_heading("Ladeverlauf", "mdi:chart-line"),
-              _graph("Ladeleistung · letzte 12 Stunden", [(e.get("power"), "Ladeleistung")], 6)]
-    modes = _graph("Zeitfenster-Lademodi · letzte 12 Stunden", [
-        (e.get(f"time_period_{i}_mode"), f"Zeitfenster {i}") for i in indices], 4)
-    global_mode = _graph("Globaler Lademodus · letzte 12 Stunden", [(e.get("charge_mode_select"), "Lademodus")])
-    if modes and strategy:
-        graphs.append(_condition(modes, strategy, "Zeitgesteuertes Aufladen"))
-        if global_mode:
-            graphs.append(_condition(global_mode, strategy, "Zeitgesteuertes Aufladen", invert=True))
-    elif global_mode:
-        graphs.append(global_mode)
+    power_graph = _graph("Ladeleistung · letzte 12 Stunden", [(e.get("power"), "Ladeleistung")], 6)
+    if power_graph:
+        power_graph.update(min_y_axis=0, fit_y_data=True)
+    graphs = [_heading("Ladeverlauf", "mdi:chart-line"), power_graph]
+    mode_entities = [(strategy, 'Ladeeinstellung'),
+                     (e.get('mode') or e.get('charge_mode_select'), 'Globaler Lademodus')]
+    mode_entities += [(e.get(f'time_period_{i}_mode'), f'Zeitfenster {i}') for i in indices]
+    # Keep historical settings visible when the current charging strategy changes.
+    graphs.append(_graph('Ladeeinstellung und Lademodi · letzte 12 Stunden', mode_entities, 'auto'))
     graphs.append(_graph("Ladestatus und Bridge-Verbindung · letzte 12 Stunden", [
-        (e.get("status"), "Ladestatus"), (api, "Bridge-Verbindung")]))
+        (e.get("status"), "Ladestatus"), (api, "Bridge-Verbindung")], 'auto'))
     if g2:
-        graphs.append(_graph("OBC-Phasenwahl (Sollwert) · letzte 12 Stunden", [(e.get("obc_phase_select"), "Phasenwahl")]))
-    graphs.append(_graph("Zeitfenster-Freigaben · letzte 12 Stunden", [
-        (e.get(f"time_period_{i}_enabled"), f"Zeitfenster {i}") for i in indices], 4))
+        graphs.append(_graph("Phasenwahl und Smart Mode (Einstellungen) · letzte 12 Stunden", [
+            (e.get("obc_phase_select"), "OBC-Phasenwahl (Sollwert)"),
+            (e.get('smart_mode'), 'Smart Mode')], 'auto'))
+    graphs.append(_graph("Zeitfenster-Freigaben (Einstellungen) · letzte 12 Stunden", [
+        (e.get(f"time_period_{i}_enabled"), f"Zeitfenster {i}") for i in indices], 'auto'))
     if box.energy_statistics and (today := e.get("today_energy")):
         graphs.append({"type": "statistics-graph", "title": "Ladeenergie je Tag · letzte 7 Tage",
                        "entities": [{"entity": today, "name": "Geladene Energie"}],
@@ -320,10 +357,12 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
                        "grid_options": {"columns": "full", "rows": 5}})
     else:
         graphs.append(_help("Warum fehlen die Tagesbalken?",
-            "Es ist noch kein aktivierter Energiesensor mit geeigneter Summenstatistik verfügbar."))
+            box.energy_statistics_note or
+            "Ein geeigneter Tageszähler mit Recorder-Aufzeichnung ist erforderlich."))
     graphs.append(_help("Verlauf richtig lesen",
-        "Modi und Phasenwahl zeigen Einstellungen. Zeitfenster-Freigaben zeigen Ein/Aus, "
-        "keine tatsächlichen Ladezeiten. Tagesbalken nutzen gespeicherte Statistiken; "
+        "Modi, Phasenwahl und Smart Mode zeigen Einstellungen, keine gemessenen aktiven Phasen. "
+        "Zeitfenster-Freigaben zeigen Ein/Aus, keine tatsächlichen Ladezeiten. "
+        "Neue Tagesstatistiken benötigen zunächst Recorder-Aufzeichnung; "
         "fehlende Vergangenheit wird nicht ergänzt. Cloud-Verzögerungen können die Tageszuordnung beeinflussen."))
     history["sections"].append(_section(graphs, wide=True))
 
@@ -373,6 +412,14 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
                 options.append(_available(_help("Hausstrom-Einstellung erklärt",
                     "Anschlussgrenze des Hauses, kein Ladestrom-Sollwert."), entity))
     info = [_heading("Gerät und Diagnose", "mdi:information-outline")]
+    if api:
+        info.append(_tile(api, 'Portal-Verbindung', icon='mdi:cloud-check'))
+    if diagnosis:
+        info.append(_tile(diagnosis, 'Wallbox-Diagnose', icon='mdi:stethoscope'))
+        info.append(_help('Diagnose erklärt',
+            'Portal-Verbindung, Statusrückmeldung und gemeldete Störung werden getrennt bewertet. '
+            'Details und Rohcode öffnest du über die Diagnosekachel. '
+            'Fehlende Statusangaben belegen keinen bestimmten RS485-Defekt.'))
     details = [{"entity": e[key], "name": name} for key, name in (
         ("information_model", "Modell"), ("portal_profile", "Portal-Profil"),
         ("information_sn", "Serialnummer"), ("information_softwareVersion", "Software"),
