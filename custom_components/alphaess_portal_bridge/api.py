@@ -266,8 +266,11 @@ class AlphaESSPortalApi:
         )
         if not isinstance(sites, list):
             return None
+        history = self.history
+        if history:
+            history.record("bridge", event="energy_site_list", site_count=len(sites))
         matches = set()
-        for site in sites:
+        for index, site in enumerate(sites, start=1):
             site_id = site.get("id") if isinstance(site, dict) else None
             if not isinstance(site_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", site_id):
                 continue
@@ -302,10 +305,17 @@ class AlphaESSPortalApi:
                 wallboxes.update(serials)
                 if system.get("sysSn") == self._system_serial and wallbox_serial in serials:
                     matched_inverter = True
-            if matched_inverter:
-                if wallboxes != {wallbox_serial}:
-                    return None
+            eligible = matched_inverter and wallboxes == {wallbox_serial}
+            if history:
+                history.record(
+                    "bridge", event="energy_site_devices", candidate=index,
+                    inverter_and_wallbox_match=matched_inverter, wallbox_count=len(wallboxes),
+                    eligible=eligible,
+                )
+            if eligible:
                 matches.add(site_id)
+        if history:
+            history.record("bridge", event="energy_site_match", match_count=len(matches))
         return next(iter(matches)) if len(matches) == 1 else None
 
     async def _async_get_site_daily_energy(self, wallbox_serial: str) -> tuple[str, float] | None:
@@ -330,6 +340,9 @@ class AlphaESSPortalApi:
                 self._energy_site_until = time.monotonic() + 3600
             if self._energy_site is None:
                 self._site_energy = None
+                if self.history:
+                    self.history.record("bridge", event="site_daily_energy", day=day,
+                                        result="no_unique_site")
                 return None
             response = await self._async_get(
                 f"/internal/v1/sites/{self._energy_site}/energy",
@@ -337,6 +350,9 @@ class AlphaESSPortalApi:
                 step="site daily energy", supplemental=True,
             )
         except PortalConnectionError:
+            if self.history:
+                self.history.record("bridge", event="site_daily_energy", day=day,
+                                    result="request_failed", cached_kwh=self._site_energy[1] if self._site_energy else None)
             return self._site_energy
         self._site_energy = None
         ev_charge = response.get("evCharge") if isinstance(response, dict) else None
@@ -347,9 +363,15 @@ class AlphaESSPortalApi:
                 try:
                     value = float(raw)
                 except OverflowError:
-                    return None
+                    value = float("inf")
                 if isfinite(value) and value >= 0:
                     self._site_energy = (day, value)
+        if self.history:
+            self.history.record(
+                "bridge", event="site_daily_energy", day=day,
+                result="accepted" if self._site_energy is not None else "invalid_or_missing",
+                kwh=self._site_energy[1] if self._site_energy else None,
+            )
         return self._site_energy
 
     async def async_get_charge_report_items(self, wallbox_serial: str) -> list[dict[str, Any]]:

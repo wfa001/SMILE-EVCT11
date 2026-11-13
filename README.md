@@ -61,7 +61,9 @@ Diese verweist auf die entsprechende `id` in `api-antworten.jsonl`.
 Identische bereinigte Antworten stehen dort einmal. Neue API-Felder und
 Änderungen an Werten oder Datentypen bleiben sichtbar. Bekannte sensible
 Werte werden maskiert oder pseudonymisiert, auch beim Export älterer
-Aufzeichnungen. Bei leerem Verlauf enthält die ZIP eine bereinigte
+Aufzeichnungen. Bekannte Standort-, Installateur- und Netzwerkfelder werden
+entfernt. Für die G1T-Energiebilanz protokolliert die Bridge Abrufstatus,
+Ergebnis der Anlagenzuordnung, Datum und kWh-Wert. Bei leerem Verlauf enthält die ZIP eine bereinigte
 Momentaufnahme.
 
 

@@ -4,7 +4,7 @@ from math import isfinite
 import re
 from types import SimpleNamespace
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 from test_authentication_recovery import API_NS, extract
 from test_wallbox_communication import NS, coordinator_with
@@ -55,6 +55,21 @@ class SiteDailyEnergyTests(unittest.IsolatedAsyncioTestCase):
         self.devices["others"].append({"type": "EvCharger", "sysSn": "SECOND"})
         self.assertIsNone(await self.api._async_get_site_daily_energy("WALLBOX"))
         self.assertEqual(self.read.await_count, 3)
+
+    async def test_diagnostics_record_site_match_and_kwh_without_identifiers(self):
+        self.api.history = Mock()
+        self.assertEqual(await self.api._async_get_site_daily_energy("WALLBOX"), ("2026-11-13", 19.74))
+        records = [entry.kwargs for entry in self.api.history.record.call_args_list]
+        self.assertIn({
+            "event": "energy_site_devices", "candidate": 2,
+            "inverter_and_wallbox_match": True, "wallbox_count": 1, "eligible": True,
+        }, records)
+        self.assertEqual(records[-1], {
+            "event": "site_daily_energy", "day": "2026-11-13",
+            "result": "accepted", "kwh": 19.74,
+        })
+        for identifier in ("test-site", "INVERTER", "WALLBOX"):
+            self.assertNotIn(identifier, repr(records))
 
     def test_g1t_daily_sensor_uses_today_only_and_prefers_live_data(self):
         day = NS["dt_util"].now().date().isoformat()
