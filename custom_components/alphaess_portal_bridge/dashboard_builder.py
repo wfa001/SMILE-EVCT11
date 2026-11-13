@@ -245,12 +245,13 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
         if entity := e.get(key):
             card = _tile(entity, name, icon=icon, columns=6 if energy_count == 2 else 12)
             card["grid_options"]["rows"] = 1
-            left.append(card)
+            left.append(_available(card, entity) if g1 else card)
     if last_completed and (status_entity := e.get("status")):
+        pending = "" if g1 else "**Aktuelle Ladung:** Energiewert ausstehend"
         left.append(_condition(_note(
             f"{{% set kwh = state_attr('{last_completed}', 'Aktuelle Ladung (kWh)') %}}"
-            "**Aktuelle Ladung:** {{ 'Energiewert ausstehend' if kwh is none "
-            "else (kwh | string | replace('.', ',')) ~ ' kWh' }}"
+            f"{{{{ {json.dumps(pending)} if kwh is none else "
+            "'**Aktuelle Ladung:** ' ~ (kwh | string | replace('.', ',')) ~ ' kWh' }}"
         ), status_entity, "Lädt"))
     if energy_count:
         left.append(_help("Energieangaben erklärt",

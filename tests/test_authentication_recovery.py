@@ -88,6 +88,24 @@ def make_api(responses):
 
 
 class APITests(unittest.IsolatedAsyncioTestCase):
+    async def test_optional_site_request_denial_preserves_session_and_omits_private_path(self):
+        api, session = make_api([(403, {"private": "test"})])
+        api._async_token = AsyncMock()
+        api._token = "existing-token"
+        api.history = Mock(enabled=True)
+        with self.assertRaises(PortalConnectionError):
+            await api._async_get(
+                "/internal/v1/sites/private-id/devices",
+                step="energy site devices", supplemental=True,
+            )
+        self.assertEqual(len(session.gets), 1)
+        self.assertEqual(api._token, "existing-token")
+        self.assertIsNone(api._authentication_error)
+        record = api.history.record.call_args.kwargs
+        self.assertEqual(record["http_status"], 403)
+        self.assertNotIn("endpoint", record)
+        self.assertNotIn("response", record)
+
     async def test_saved_pause_prevents_login_after_restart(self):
         session = Session([])
         api = API(SimpleNamespace(session=session), {

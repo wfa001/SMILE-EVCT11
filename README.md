@@ -252,12 +252,17 @@ Bei G2T wurde beobachtet: Nach Mitternacht ohne neue Ladung zeigt das Portal
 0 kWh; die erfolgreiche `real-status`-Antwort enthält einen normalen Status,
 aber kein `chargingAmount`. Auch `lastChargingAmount` wird bei einem Nullwert
 weggelassen, beispielsweise nach Tageswechsel oder zu Beginn einer neuen Sitzung.
-Bei einer erfolgreichen G1T-/G2T-Live-Antwort mit normalem Status zeigt die Bridge
+Bei einer erfolgreichen G2T-Live-Antwort mit normalem Status zeigt die Bridge
 für das jeweils fehlende Energiefeld ebenfalls 0 kWh. Vorhandene Zahlenwerte
 werden unabhängig voneinander übernommen und nach Abstecken nicht pauschal gelöscht.
 Bei fehlendem Status, Fehlerzuständen, erkannten Abfragefehlern, System-Fallbacks,
-explizitem `null` oder ungültigen Werten wird keine 0 ergänzt. Für G1T fehlt
-noch ein entsprechender Praxistest des Tageswechsels; die gleiche Nullwert-Regel ist auf Wunsch auch dort aktiviert. Es gibt keine lokale Rücksetzung um Mitternacht.
+explizitem `null` oder ungültigen Werten wird keine 0 ergänzt.
+
+Bei G1T kann **Heute geladen** auf die Portal-Energiebilanz zurückgreifen,
+wenn der Live-Tageswert fehlt. Die Bridge gleicht Wechselrichter und Wallbox
+mit der Geräteliste der Anlage ab. Der Wert gilt für genau eine eindeutig
+zugeordnete Wallbox. Die Portalabfrage erfolgt höchstens alle fünf Minuten.
+Fehlende G1T-Tages- und Sitzungswerte bleiben unbekannt.
 Die bisherigen Geräte-/Entitäts-Unique-IDs bleiben erhalten.
 
 Beim G2T-Test vom 28.10.2026 ergaben die erste Sitzung mit 3,73 kWh und die

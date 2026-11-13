@@ -14,6 +14,7 @@ from collections.abc import Callable
 from functools import wraps
 import hashlib
 import logging
+from math import isfinite
 import re
 import time
 from typing import Any
@@ -138,6 +139,11 @@ class AlphaESSPortalApi:
         self._report_items_cache: list[dict[str, Any]] = []
         self._report_cache_until = 0.0
         self._report_cache_date: str | None = None
+        self._energy_site: str | None = None
+        self._energy_site_until = 0.0
+        self._site_energy: tuple[str, float] | None = None
+        self._site_energy_key: tuple[str, str] | None = None
+        self._site_energy_until = 0.0
 
     def set_settings_written_callback(
         self, callback: Callable[[], None] | None
@@ -207,6 +213,9 @@ class AlphaESSPortalApi:
         wallbox_status = self._find_wallbox_data(system, wallbox_serial)
         wallbox_status_source = "system"
 
+        generation, _ = self._settings_from_wallbox(
+            self._find_wallbox_data(configuration, wallbox_serial)
+        )
         if wallbox_serial and wallbox_serial not in self._live_status_unavailable_serials:
             try:
                 wallbox_status = await self.async_get_live_status(wallbox_serial)
@@ -214,9 +223,6 @@ class AlphaESSPortalApi:
             except PortalConnectionError as err:
                 # G1T may not implement real-status at all; preserve system
                 # fallback for both initial and later full refreshes.
-                generation, _settings = self._settings_from_wallbox(
-                    self._find_wallbox_data(configuration, wallbox_serial)
-                )
                 if err.status == 404 and generation == "g1T":
                     self._live_status_unavailable_serials.add(wallbox_serial)
                 elif err.status != 409:
@@ -236,6 +242,10 @@ class AlphaESSPortalApi:
                 if self._report_items_cache:
                     today_report_energy = self._today_energy_from_report(self._report_items_cache)
 
+        site_daily_energy = (
+            await self._async_get_site_daily_energy(wallbox_serial)
+            if wallbox_serial and generation == "g1T" else None
+        )
         return {
             "system": system,
             "configuration": configuration,
@@ -245,7 +255,102 @@ class AlphaESSPortalApi:
             "wallbox_status_source": wallbox_status_source,
             "latest_report": latest_report,
             "today_report_energy": today_report_energy,
+            "site_daily_energy": site_daily_energy,
         }
+
+    async def _async_find_energy_site(self, wallbox_serial: str) -> str | None:
+        """Match the configured inverter and its wallbox to one single-wallbox site."""
+        sites = await self._async_get(
+            "/internal/v1/sites", params={"snTypes": "residential,commercial"},
+            step="energy site list", supplemental=True,
+        )
+        if not isinstance(sites, list):
+            return None
+        matches = set()
+        for site in sites:
+            site_id = site.get("id") if isinstance(site, dict) else None
+            if not isinstance(site_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", site_id):
+                continue
+            devices = await self._async_get(
+                f"/internal/v1/sites/{site_id}/devices",
+                step="energy site devices", supplemental=True,
+            )
+            if not isinstance(devices, dict):
+                continue
+            systems = devices.get("ess")
+            others = devices.get("others", [])
+            if not isinstance(systems, list) or not isinstance(others, list):
+                continue
+            wallboxes = set()
+            for device in others:
+                if isinstance(device, dict) and device.get("type") == "EvCharger":
+                    serial = device.get("sysSn")
+                    wallboxes.add(serial if isinstance(serial, str) else None)
+            matched_inverter = False
+            for system in systems:
+                if not isinstance(system, dict):
+                    continue
+                chargers = system.get("evChargers", [])
+                if not isinstance(chargers, list):
+                    wallboxes.add(None)
+                    continue
+                serials = {
+                    charger.get("sysSn") if isinstance(charger, dict)
+                    and isinstance(charger.get("sysSn"), str) else None
+                    for charger in chargers
+                }
+                wallboxes.update(serials)
+                if system.get("sysSn") == self._system_serial and wallbox_serial in serials:
+                    matched_inverter = True
+            if matched_inverter:
+                if wallboxes != {wallbox_serial}:
+                    return None
+                matches.add(site_id)
+        return next(iter(matches)) if len(matches) == 1 else None
+
+    async def _async_get_site_daily_energy(self, wallbox_serial: str) -> tuple[str, float] | None:
+        """Read the portal's daily kWh, with a separate five-minute cache."""
+        day = dt_util.now().date().isoformat()
+        key = (wallbox_serial, day)
+        if self._site_energy_key == key and time.monotonic() < self._site_energy_until:
+            return self._site_energy
+        if self._site_energy_key is not None and self._site_energy_key[0] != wallbox_serial:
+            self._energy_site_until = 0.0
+            self._site_energy = None
+        self._site_energy_key = key
+        if self._site_energy and self._site_energy[0] != day:
+            self._site_energy = None
+        self._site_energy_until = time.monotonic() + 300
+        try:
+            if time.monotonic() >= self._energy_site_until:
+                site_id = await self._async_find_energy_site(wallbox_serial)
+                if site_id != self._energy_site:
+                    self._site_energy = None
+                self._energy_site = site_id
+                self._energy_site_until = time.monotonic() + 3600
+            if self._energy_site is None:
+                self._site_energy = None
+                return None
+            response = await self._async_get(
+                f"/internal/v1/sites/{self._energy_site}/energy",
+                params={"startDate": day, "endDate": day, "dimension": "day"},
+                step="site daily energy", supplemental=True,
+            )
+        except PortalConnectionError:
+            return self._site_energy
+        self._site_energy = None
+        ev_charge = response.get("evCharge") if isinstance(response, dict) else None
+        values = ev_charge.get("load") if isinstance(ev_charge, dict) else None
+        if isinstance(values, list) and len(values) == 1 and response.get("ts") == [day]:
+            raw = values[0]
+            if type(raw) in (int, float):
+                try:
+                    value = float(raw)
+                except OverflowError:
+                    return None
+                if isfinite(value) and value >= 0:
+                    self._site_energy = (day, value)
+        return self._site_energy
 
     async def async_get_charge_report_items(self, wallbox_serial: str) -> list[dict[str, Any]]:
         """Return recent charging sessions, cached to reduce portal traffic."""
@@ -842,10 +947,13 @@ class AlphaESSPortalApi:
         *,
         params: dict[str, Any] | None = None,
         step: str,
-    ) -> dict[str, Any]:
+        supplemental: bool = False,
+    ) -> Any:
         history = getattr(self, "history", None)
         started = time.monotonic()
-        event = {"method": "GET", "endpoint": path, "step": step, "request": params}
+        event = {"method": "GET", "step": step, "request": params}
+        if not supplemental:
+            event["endpoint"] = path
         try:
             await self._async_token()
         except (AuthenticationError, PortalConnectionError) as err:
@@ -858,25 +966,28 @@ class AlphaESSPortalApi:
                 f"{self._api_url}{path}",
                 params=params,
                 headers={**PORTAL_HEADERS, "Authorization": self._token},
-                timeout=aiohttp.ClientTimeout(total=20),
+                timeout=aiohttp.ClientTimeout(total=5 if supplemental else 20),
             ) as response:
                 if history and history.enabled and response.status != 200:
                     history.record("api", **event, http_status=response.status,
                                    duration_ms=round((time.monotonic() - started) * 1000),
-                                   **await self._history_response_body(response))
-                if response.status in (401, 403):
+                                   **({} if supplemental else await self._history_response_body(response)))
+                if response.status in (401, 403) and not supplemental:
                     raise self._reject_authentication(step, response.status)
                 if response.status != 200:
                     raise PortalConnectionError(response.status, step)
                 try:
                     payload = await response.json()
-                except (ValueError, aiohttp.ContentTypeError):
+                except (ValueError, aiohttp.ContentTypeError) as err:
                     if history:
                         history.record("api", **event, http_status=response.status, error="invalid JSON")
+                    if supplemental:
+                        raise PortalConnectionError(response.status, step) from err
                     raise
                 if history:
-                    history.record("api", **event, http_status=response.status, response=payload,
-                                   duration_ms=round((time.monotonic() - started) * 1000))
+                    history.record("api", **event, http_status=response.status,
+                                   duration_ms=round((time.monotonic() - started) * 1000),
+                                   **({} if supplemental else {"response": payload}))
                 return payload
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             if history:
