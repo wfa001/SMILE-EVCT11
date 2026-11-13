@@ -19,7 +19,8 @@ class SiteDailyEnergyTests(unittest.IsolatedAsyncioTestCase):
         namespace["time"] = SimpleNamespace(monotonic=lambda: self.clock)
         api_type = extract("api.py", "AlphaESSPortalApi", {
             "__init__", "_async_find_energy_site", "_async_get_site_daily_energy",
-            "_site_energy_by_day", "async_get_site_energy_diagnostics",
+            "_site_kwh", "_site_load_by_day", "_site_consumption_by_day",
+            "_site_energy_result", "async_get_site_energy_diagnostics",
         }, namespace)
         self.api = api_type(SimpleNamespace(session=None), {
             "username": "test", "password": "test", "system_serial": "INVERTER",
@@ -45,9 +46,11 @@ class SiteDailyEnergyTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(params, {"startDate": "2026-11-07", "endDate": day, "dimension": "day"})
             return {"ts": ["2026-11-07", "2026-11-09", day], "evCharge": {
                 "load": [26.29, {"source": "0.0", "parsedValue": 0}, 19.74],
-            }}
+            }, "selfGeneration": {"load": [2, 0, 3.69]},
+                "battery": {"load": [0.2, 0, 3.5]}, "grid": {"load": [40, 0, 22.49]}}
         self.assertEqual(params, {"startDate": day, "endDate": day, "dimension": "day"})
-        return {"ts": [day], "evCharge": {"load": [19.74 if day.endswith("13") else 0]}}
+        return {"ts": [day], "evCharge": {"load": [19.74 if day.endswith("13") else 0]},
+                "summary": {"consumption": 29.68}}
 
     async def test_matches_inverter_and_wallbox_and_reloads_on_day_change(self):
         self.assertEqual(await self.api._async_get_site_daily_energy("WALLBOX"), ("2026-11-13", 19.74))
@@ -70,6 +73,11 @@ class SiteDailyEnergyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result["days"]), 7)
         self.assertEqual([row["kwh"] for row in result["days"]],
                          [26.29, None, 0.0, None, None, None, 19.74])
+        self.assertEqual(result["days"][2], {
+            "date": "2026-11-09", "kwh": 0.0, "consumption_kwh": 0.0, "result": "accepted",
+        })
+        self.assertEqual(result["days"][1]["result"], "invalid_or_missing")
+        self.assertEqual(result["days"][-1]["consumption_kwh"], 29.68)
         self.assertNotIn("test-site", repr(result))
         self.assertIsNone(self.api._site_energy_key)
 
@@ -83,10 +91,33 @@ class SiteDailyEnergyTests(unittest.IsolatedAsyncioTestCase):
         }, records)
         self.assertEqual(records[-1], {
             "event": "site_daily_energy", "day": "2026-11-13",
-            "result": "accepted", "kwh": 19.74,
+            "result": "accepted", "kwh": 19.74, "consumption_kwh": 29.68,
         })
         for identifier in ("test-site", "INVERTER", "WALLBOX"):
             self.assertNotIn(identifier, repr(records))
+
+    async def test_implausible_daily_reading_remains_in_diagnostics_only(self):
+        self.now = self.now.replace(day=1)
+        self.api.history = Mock()
+
+        async def reply(path, **kwargs):
+            if path.endswith("/energy"):
+                return {
+                    "ts": ["2026-11-01"], "evCharge": {"load": [5098.22]},
+                    "summary": {"consumption": 13.73},
+                }
+            return await self.reply(path, **kwargs)
+
+        self.read.side_effect = reply
+        self.assertIsNone(await self.api._async_get_site_daily_energy("WALLBOX"))
+        self.assertEqual(self.api.history.record.call_args.kwargs, {
+            "event": "site_daily_energy", "day": "2026-11-01", "result": "implausible",
+            "kwh": 5098.22, "consumption_kwh": 13.73,
+        })
+        result = await self.api.async_get_site_energy_diagnostics("WALLBOX")
+        self.assertEqual(result["days"][-1], {
+            "date": "2026-11-01", "result": "implausible", "kwh": 5098.22, "consumption_kwh": 13.73,
+        })
 
     def test_g1t_daily_sensor_uses_today_only_and_prefers_live_data(self):
         day = NS["dt_util"].now().date().isoformat()

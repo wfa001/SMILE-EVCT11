@@ -355,37 +355,72 @@ class AlphaESSPortalApi:
                 self.history.record("bridge", event="site_daily_energy", day=day,
                                     result="request_failed", cached_kwh=self._site_energy[1] if self._site_energy else None)
             return self._site_energy
-        value = self._site_energy_by_day(response).get(day)
-        self._site_energy = (day, value) if value is not None else None
+        value = self._site_load_by_day(response, "evCharge").get(day)
+        consumption = self._site_consumption_by_day(response).get(day)
+        result = self._site_energy_result(value, consumption)
+        self._site_energy = (day, value) if result == "accepted" and value is not None else None
         if self.history:
             self.history.record(
                 "bridge", event="site_daily_energy", day=day,
-                result="accepted" if value is not None else "invalid_or_missing", kwh=value,
+                result=result, kwh=value, consumption_kwh=consumption,
             )
         return self._site_energy
 
     @staticmethod
-    def _site_energy_by_day(response: Any) -> dict[str, float]:
-        """Decode aligned portal dates and values without inventing missing kWh."""
-        ev_charge = response.get("evCharge") if isinstance(response, dict) else None
-        values = ev_charge.get("load") if isinstance(ev_charge, dict) else None
+    def _site_kwh(raw: Any) -> float | None:
+        if isinstance(raw, dict):
+            raw = raw.get("parsedValue")
+        if type(raw) not in (int, float):
+            return None
+        try:
+            value = float(raw)
+        except OverflowError:
+            return None
+        return value if isfinite(value) and value >= 0 else None
+
+    @classmethod
+    def _site_load_by_day(cls, response: Any, source: str) -> dict[str, float]:
+        """Decode a portal load series aligned with the dates in the response."""
+        flows = response.get(source) if isinstance(response, dict) else None
+        values = flows.get("load") if isinstance(flows, dict) else None
         dates = response.get("ts") if isinstance(response, dict) else None
         if not isinstance(dates, list) or not isinstance(values, list) or len(dates) != len(values):
             return {}
         if not all(isinstance(day, str) for day in dates) or len(set(dates)) != len(dates):
             return {}
-        readings = {}
-        for day, raw in zip(dates, values, strict=True):
-            if isinstance(raw, dict):
-                raw = raw.get("parsedValue")
-            if type(raw) in (int, float):
-                try:
-                    value = float(raw)
-                except OverflowError:
-                    continue
-                if isfinite(value) and value >= 0:
-                    readings[day] = value
-        return readings
+        return {
+            day: value for day, raw in zip(dates, values, strict=True)
+            if (value := cls._site_kwh(raw)) is not None
+        }
+
+    @classmethod
+    def _site_consumption_by_day(cls, response: Any) -> dict[str, float]:
+        if not isinstance(response, dict):
+            return {}
+        dates = response.get("ts")
+        summary = response.get("summary")
+        if (isinstance(dates, list) and len(dates) == 1 and isinstance(dates[0], str)
+                and isinstance(summary, dict)
+                and (value := cls._site_kwh(summary.get("consumption"))) is not None):
+            return {dates[0]: value}
+        solar, battery, grid = (
+            cls._site_load_by_day(response, source) for source in ("selfGeneration", "battery", "grid")
+        )
+        return {
+            day: round(total, 3) for day in solar.keys() & battery.keys() & grid.keys()
+            if isfinite(total := solar[day] + battery[day] + grid[day])
+        }
+
+    @staticmethod
+    def _site_energy_result(value: float | None, consumption: float | None) -> str:
+        if value is None:
+            return "invalid_or_missing"
+        if consumption is None:
+            return "consumption_missing"
+        # Allow small rounding differences between the portal's energy series.
+        if value - consumption > max(0.1, consumption * 0.01):
+            return "implausible"
+        return "accepted"
 
     async def async_get_site_energy_diagnostics(self, wallbox_serial: str) -> dict[str, Any]:
         """Sample the last seven calendar days on demand for the diagnostic ZIP."""
@@ -405,12 +440,17 @@ class AlphaESSPortalApi:
                 )
         except (TimeoutError, AuthenticationError, PortalConnectionError) as err:
             return {**result, "result": "request_failed", "http_status": getattr(err, "status", None)}
-        readings = self._site_energy_by_day(response)
+        readings = self._site_load_by_day(response, "evCharge")
+        consumption = self._site_consumption_by_day(response)
         days_with_values = sum(day in readings for day in days)
         return {
             **result,
             "result": "received" if days_with_values else "invalid_or_missing",
-            "days": [{"date": day, "kwh": readings.get(day)} for day in days],
+            "days": [
+                {"date": day, "kwh": readings.get(day), "consumption_kwh": consumption.get(day),
+                 "result": self._site_energy_result(readings.get(day), consumption.get(day))}
+                for day in days
+            ],
         }
 
     async def async_get_charge_report_items(self, wallbox_serial: str) -> list[dict[str, Any]]:

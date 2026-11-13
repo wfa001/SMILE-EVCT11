@@ -66,7 +66,11 @@ entfernt. Für die G1T-Energiebilanz protokolliert die Bridge Abrufstatus,
 Ergebnis der Anlagenzuordnung, Datum und kWh-Wert. Beim ZIP-Download fragt die
 Bridge für eine eindeutig zugeordnete Anlage mit genau einer Wallbox sieben
 Kalendertage für die Diagnose ab. In `site_energy_seven_days` steht je Tag der
-Portalwert oder `null` bei fehlenden Daten. Bei leerem Verlauf enthält die ZIP eine bereinigte
+Portalwert oder `null` bei fehlenden Daten, der Anlagenverbrauch und das
+Prüfergebnis. Als G1T-Tageswert übernimmt die Bridge den Portalwert nur,
+wenn der Anlagenverbrauch vorliegt und die Wallbox-Energie ihn höchstens
+um 0,1 kWh oder 1 % überschreitet, je nachdem, welcher Betrag größer ist.
+Die Diagnose behält auch auffällige Werte. Bei leerem Verlauf enthält die ZIP eine bereinigte
 Momentaufnahme.
 
 
