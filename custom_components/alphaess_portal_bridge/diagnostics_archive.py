@@ -70,6 +70,10 @@ class DiagnosticsArchiveView(HomeAssistantView):
             summary["wallbox"] = {
                 key: wallbox.get(key) for key in ("model", "softwareVersion", "hardwareVersion")
             }
+            if wallbox_serial := data.get("wallbox_serial"):
+                summary["site_energy_seven_days"] = (
+                    await coordinator.api.async_get_site_energy_diagnostics(wallbox_serial)
+                )
             archive = await coordinator.api.history.async_export(summary, {
                 "system": data.get("system"),
                 "configuration": data.get("configuration"),

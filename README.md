@@ -63,7 +63,10 @@ Identische bereinigte Antworten stehen dort einmal. Neue API-Felder und
 Werte werden maskiert oder pseudonymisiert, auch beim Export älterer
 Aufzeichnungen. Bekannte Standort-, Installateur- und Netzwerkfelder werden
 entfernt. Für die G1T-Energiebilanz protokolliert die Bridge Abrufstatus,
-Ergebnis der Anlagenzuordnung, Datum und kWh-Wert. Bei leerem Verlauf enthält die ZIP eine bereinigte
+Ergebnis der Anlagenzuordnung, Datum und kWh-Wert. Beim ZIP-Download fragt die
+Bridge für eine eindeutig zugeordnete Anlage mit genau einer Wallbox sieben
+Kalendertage für die Diagnose ab. In `site_energy_seven_days` steht je Tag der
+Portalwert oder `null` bei fehlenden Daten. Bei leerem Verlauf enthält die ZIP eine bereinigte
 Momentaufnahme.
 
 

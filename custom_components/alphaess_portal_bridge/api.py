@@ -11,6 +11,7 @@ import asyncio
 import base64
 import copy
 from collections.abc import Callable
+from datetime import timedelta
 from functools import wraps
 import hashlib
 import logging
@@ -354,25 +355,63 @@ class AlphaESSPortalApi:
                 self.history.record("bridge", event="site_daily_energy", day=day,
                                     result="request_failed", cached_kwh=self._site_energy[1] if self._site_energy else None)
             return self._site_energy
-        self._site_energy = None
+        value = self._site_energy_by_day(response).get(day)
+        self._site_energy = (day, value) if value is not None else None
+        if self.history:
+            self.history.record(
+                "bridge", event="site_daily_energy", day=day,
+                result="accepted" if value is not None else "invalid_or_missing", kwh=value,
+            )
+        return self._site_energy
+
+    @staticmethod
+    def _site_energy_by_day(response: Any) -> dict[str, float]:
+        """Decode aligned portal dates and values without inventing missing kWh."""
         ev_charge = response.get("evCharge") if isinstance(response, dict) else None
         values = ev_charge.get("load") if isinstance(ev_charge, dict) else None
-        if isinstance(values, list) and len(values) == 1 and response.get("ts") == [day]:
-            raw = values[0]
+        dates = response.get("ts") if isinstance(response, dict) else None
+        if not isinstance(dates, list) or not isinstance(values, list) or len(dates) != len(values):
+            return {}
+        if not all(isinstance(day, str) for day in dates) or len(set(dates)) != len(dates):
+            return {}
+        readings = {}
+        for day, raw in zip(dates, values, strict=True):
+            if isinstance(raw, dict):
+                raw = raw.get("parsedValue")
             if type(raw) in (int, float):
                 try:
                     value = float(raw)
                 except OverflowError:
-                    value = float("inf")
+                    continue
                 if isfinite(value) and value >= 0:
-                    self._site_energy = (day, value)
-        if self.history:
-            self.history.record(
-                "bridge", event="site_daily_energy", day=day,
-                result="accepted" if self._site_energy is not None else "invalid_or_missing",
-                kwh=self._site_energy[1] if self._site_energy else None,
-            )
-        return self._site_energy
+                    readings[day] = value
+        return readings
+
+    async def async_get_site_energy_diagnostics(self, wallbox_serial: str) -> dict[str, Any]:
+        """Sample the last seven calendar days on demand for the diagnostic ZIP."""
+        today = dt_util.now().date()
+        days = [(today - timedelta(days=offset)).isoformat() for offset in range(6, -1, -1)]
+        result = {"source": "evCharge.load", "start_date": days[0], "end_date": days[-1]}
+        try:
+            async with asyncio.timeout(8):
+                site_id = await self._async_find_energy_site(wallbox_serial)
+                if site_id is None:
+                    return {**result, "site_match": False, "result": "no_unique_site"}
+                result["site_match"] = True
+                response = await self._async_get(
+                    f"/internal/v1/sites/{site_id}/energy",
+                    params={"startDate": days[0], "endDate": days[-1], "dimension": "day"},
+                    step="site energy seven days", supplemental=True,
+                )
+        except (TimeoutError, AuthenticationError, PortalConnectionError) as err:
+            return {**result, "result": "request_failed", "http_status": getattr(err, "status", None)}
+        readings = self._site_energy_by_day(response)
+        days_with_values = sum(day in readings for day in days)
+        return {
+            **result,
+            "result": "received" if days_with_values else "invalid_or_missing",
+            "days": [{"date": day, "kwh": readings.get(day)} for day in days],
+        }
 
     async def async_get_charge_report_items(self, wallbox_serial: str) -> list[dict[str, Any]]:
         """Return recent charging sessions, cached to reduce portal traffic."""

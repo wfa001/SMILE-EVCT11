@@ -1,5 +1,5 @@
 """Test the observed site-energy API without contacting AlphaESS."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from math import isfinite
 import re
 from types import SimpleNamespace
@@ -14,10 +14,12 @@ class SiteDailyEnergyTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.now = datetime(2026, 11, 13, tzinfo=timezone.utc)
         self.clock = 10
-        namespace = dict(API_NS, re=re, isfinite=isfinite, dt_util=SimpleNamespace(now=lambda: self.now))
+        namespace = dict(API_NS, re=re, isfinite=isfinite, timedelta=timedelta,
+                         dt_util=SimpleNamespace(now=lambda: self.now))
         namespace["time"] = SimpleNamespace(monotonic=lambda: self.clock)
         api_type = extract("api.py", "AlphaESSPortalApi", {
             "__init__", "_async_find_energy_site", "_async_get_site_daily_energy",
+            "_site_energy_by_day", "async_get_site_energy_diagnostics",
         }, namespace)
         self.api = api_type(SimpleNamespace(session=None), {
             "username": "test", "password": "test", "system_serial": "INVERTER",
@@ -39,6 +41,11 @@ class SiteDailyEnergyTests(unittest.IsolatedAsyncioTestCase):
             return self.devices
         day = self.now.date().isoformat()
         self.assertEqual(path, "/internal/v1/sites/test-site/energy")
+        if step == "site energy seven days":
+            self.assertEqual(params, {"startDate": "2026-11-07", "endDate": day, "dimension": "day"})
+            return {"ts": ["2026-11-07", "2026-11-09", day], "evCharge": {
+                "load": [26.29, {"source": "0.0", "parsedValue": 0}, 19.74],
+            }}
         self.assertEqual(params, {"startDate": day, "endDate": day, "dimension": "day"})
         return {"ts": [day], "evCharge": {"load": [19.74 if day.endswith("13") else 0]}}
 
@@ -55,6 +62,16 @@ class SiteDailyEnergyTests(unittest.IsolatedAsyncioTestCase):
         self.devices["others"].append({"type": "EvCharger", "sysSn": "SECOND"})
         self.assertIsNone(await self.api._async_get_site_daily_energy("WALLBOX"))
         self.assertEqual(self.read.await_count, 3)
+
+    async def test_week_diagnostics_keep_zero_and_missing_days_distinct(self):
+        result = await self.api.async_get_site_energy_diagnostics("WALLBOX")
+        self.assertTrue(result["site_match"])
+        self.assertEqual(result["result"], "received")
+        self.assertEqual(len(result["days"]), 7)
+        self.assertEqual([row["kwh"] for row in result["days"]],
+                         [26.29, None, 0.0, None, None, None, 19.74])
+        self.assertNotIn("test-site", repr(result))
+        self.assertIsNone(self.api._site_energy_key)
 
     async def test_diagnostics_record_site_match_and_kwh_without_identifiers(self):
         self.api.history = Mock()
