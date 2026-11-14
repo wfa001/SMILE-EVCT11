@@ -35,6 +35,15 @@ _SECRET = re.compile(
     r"|^(check.?code|link.?man|refresh|session.?id)$",
     re.I,
 )
+_REMOVED_FIELDS = re.compile(
+    r"^(?:installer(?:company|description|id|license|name|email|phone|.*address)"
+    r"|(?:device|user|site)?(?:city|country(?:code|name|info)?|"
+    r"state(?:name|code)?|province|region|street|postalcode|zipcode|address.*|location.*)"
+    r"|(?:lan|wan|local|public|private|gateway)?ip(?:v[46]|address)?"
+    r"|(?:wifi)?(?:ssid|bssid|pwd|passphrase)|mac(?:address)?"
+    r"|siteid|(?:user|device|site)(?:description|remark)|realname|fullname)$",
+    re.I,
+)
 _PRIVATE = re.compile(
     r"^(id|sn|uuid|deviceid|userid|accountid|sessionid|macaddress|ip|lat|lng|lon)$"
     r"|sn$|serial|email|phone|mobile|address|username|latitude|longitude"
@@ -44,7 +53,9 @@ _PRIVATE = re.compile(
 _PSEUDONYM = re.compile(r"id-[0-9a-f]{16}")
 _PRIVATE_TEXT = re.compile(
     r"(?i)\b(?:bearer|basic)\s+[\w.+/=\-]+|\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b"
-    r"|\beyJ[\w-]+\.[\w-]+\.[\w-]+\b|\bsk-[A-Za-z0-9_-]+",
+    r"|\beyJ[\w-]+\.[\w-]+\.[\w-]+\b|\bsk-[A-Za-z0-9_-]+"
+    r"|(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])"
+    r"|(?<![0-9a-f:])(?:[0-9a-f]{2}:){5}[0-9a-f]{2}(?![0-9a-f:])",
 )
 
 
@@ -84,6 +95,9 @@ class ApiHistory:
         if isinstance(value, dict):
             cleaned = {}
             for key, item in value.items():
+                # Preserve the operational schema while removing known private fields.
+                if _REMOVED_FIELDS.fullmatch(re.sub(r"[_-]", "", key)):
+                    continue
                 safe_key = self._clean(key)
                 if _SECRET.search(key):
                     cleaned[safe_key] = item if item is None or item == "" else _REDACTED

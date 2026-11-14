@@ -317,7 +317,7 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         if self._key in {"chargingAmount", "lastChargingAmount"} and self._key not in status:
             generation, _settings = settings_object(self.coordinator)
             if (
-                generation in {"g1T", "g2T"}
+                generation == "g2T"
                 and data.get("wallbox_status_source") == "real_status"
                 and status.get("status") in _ENERGY_STATUS
                 and getattr(self.coordinator, "last_update_success", True)
@@ -475,10 +475,15 @@ class AlphaESSWallboxDailyEnergySensor(AlphaESSWallboxEnergySensor, RestoreEntit
         return self._checkpoint
 
     def _energy_value(self, data: dict[str, Any], status: dict[str, Any]) -> float | None:
+        generation, _ = settings_object(self.coordinator)
+        if generation == "g1T":
+            value = _finite_energy(status.get(self._key))
+            if value is not None and value >= 0:
+                return value
+            return self._site_value(data)
         value = super()._energy_value(data, status)
         if value is None or not isfinite(value) or value < 0:
             return value
-        generation, _ = settings_object(self.coordinator)
         if generation != "g2T":
             return value
 
@@ -494,8 +499,27 @@ class AlphaESSWallboxDailyEnergySensor(AlphaESSWallboxEnergySensor, RestoreEntit
             self._checkpoint = DailyEnergyCheckpoint(day, value)
         return value
 
+    @staticmethod
+    def _site_value(data: dict[str, Any]) -> float | None:
+        reading = data.get("site_daily_energy")
+        if reading and reading[0] == dt_util.now().date().isoformat():
+            return reading[1]
+        return None
+
     @property
     def extra_state_attributes(self) -> dict[str, str]:
+        generation, _ = settings_object(self.coordinator)
+        if generation == "g1T":
+            data = self.coordinator.data or {}
+            status = data.get("wallbox_status")
+            live = _finite_energy(status.get(self._key)) if isinstance(status, dict) else None
+            source = "Wallbox-Status: chargingAmount"
+            if live is None or live < 0:
+                source = (
+                    "Portal-Energiebilanz: evCharge.load"
+                    if self._site_value(data) is not None else "Keine kWh-Daten"
+                )
+            return {"Quelle": source}
         return {
             "Quelle": "Portal real-status: chargingAmount",
             "Hinweis": (

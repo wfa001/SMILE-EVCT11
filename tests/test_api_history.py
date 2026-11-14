@@ -98,7 +98,16 @@ class ApiHistoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_export_masks_sensitive_values_already_saved_in_the_history(self):
         recorded = self.history()
         legacy = {
-            "basic": {"checkCode": "PRIVATE-CODE", "linkman": "PRIVATE-CONTACT"},
+            "basic": {
+                "checkCode": "PRIVATE-CODE", "linkman": "PRIVATE-CONTACT",
+                "userCity": "PRIVATE-CITY", "deviceCountryName": "PRIVATE-COUNTRY",
+                "deviceStateName": "PRIVATE-STATE", "installerDescription": "PRIVATE-NAME",
+                "installerCompany": "PRIVATE-COMPANY", "installerId": "PRIVATE-ID",
+                "installerLicense": "PRIVATE-LICENSE", "userAddress": "PRIVATE-ADDRESS",
+            },
+            "wifi": {"lanIP": "192.168.10.20", "wifi_pwd": "PRIVATE-WIFI"},
+            "site_id": "PRIVATE-SITE",
+            "power": 7250,
             "sysSn": "id-0123456789abcdef",
             "newPortalField": {"version": 3},
         }
@@ -112,6 +121,8 @@ class ApiHistoryTests(unittest.IsolatedAsyncioTestCase):
             [control] = map(json.loads, archive.read("steuerung.jsonl").splitlines())
             sanitized = {
                 "basic": {"checkCode": "[redacted]", "linkman": "[redacted]"},
+                "wifi": {},
+                "power": 7250,
                 "sysSn": "id-0123456789abcdef",
                 "newPortalField": {"version": 3},
             }

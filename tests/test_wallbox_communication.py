@@ -218,10 +218,10 @@ class SessionEnergyTests(unittest.TestCase):
             setattr(item, attribute, value)
             self.assertIsNone(self.energy(item, "lastChargingAmount"))
 
-    def test_g1t_uses_same_zero_guards_for_both_counters(self):
+    def test_g1t_keeps_missing_counters_unknown(self):
         for key in ("chargingAmount", "lastChargingAmount"):
-            for payload, expected in (({"status": "NotInsertedGun"}, 0.0),
-                                      ({"status": "Charging"}, 0.0),
+            for payload, expected in (({"status": "NotInsertedGun"}, None),
+                                      ({"status": "Charging"}, None),
                                       ({"status": "Fault"}, None),
                                       ({}, None),
                                       ({"status": "Charging", key: None}, None),

@@ -61,7 +61,16 @@ Diese verweist auf die entsprechende `id` in `api-antworten.jsonl`.
 Identische bereinigte Antworten stehen dort einmal. Neue API-Felder und
 Änderungen an Werten oder Datentypen bleiben sichtbar. Bekannte sensible
 Werte werden maskiert oder pseudonymisiert, auch beim Export älterer
-Aufzeichnungen. Bei leerem Verlauf enthält die ZIP eine bereinigte
+Aufzeichnungen. Bekannte Standort-, Installateur- und Netzwerkfelder werden
+entfernt. Für die G1T-Energiebilanz protokolliert die Bridge Abrufstatus,
+Ergebnis der Anlagenzuordnung, Datum und kWh-Wert. Beim ZIP-Download fragt die
+Bridge für eine eindeutig zugeordnete Anlage mit genau einer Wallbox sieben
+Kalendertage für die Diagnose ab. In `site_energy_seven_days` steht je Tag der
+Portalwert oder `null` bei fehlenden Daten, der Anlagenverbrauch und das
+Prüfergebnis. Als G1T-Tageswert übernimmt die Bridge den Portalwert nur,
+wenn der Anlagenverbrauch vorliegt und die Wallbox-Energie ihn höchstens
+um 0,1 kWh oder 1 % überschreitet, je nachdem, welcher Betrag größer ist.
+Die Diagnose behält auch auffällige Werte. Bei leerem Verlauf enthält die ZIP eine bereinigte
 Momentaufnahme.
 
 
@@ -252,12 +261,17 @@ Bei G2T wurde beobachtet: Nach Mitternacht ohne neue Ladung zeigt das Portal
 0 kWh; die erfolgreiche `real-status`-Antwort enthält einen normalen Status,
 aber kein `chargingAmount`. Auch `lastChargingAmount` wird bei einem Nullwert
 weggelassen, beispielsweise nach Tageswechsel oder zu Beginn einer neuen Sitzung.
-Bei einer erfolgreichen G1T-/G2T-Live-Antwort mit normalem Status zeigt die Bridge
+Bei einer erfolgreichen G2T-Live-Antwort mit normalem Status zeigt die Bridge
 für das jeweils fehlende Energiefeld ebenfalls 0 kWh. Vorhandene Zahlenwerte
 werden unabhängig voneinander übernommen und nach Abstecken nicht pauschal gelöscht.
 Bei fehlendem Status, Fehlerzuständen, erkannten Abfragefehlern, System-Fallbacks,
-explizitem `null` oder ungültigen Werten wird keine 0 ergänzt. Für G1T fehlt
-noch ein entsprechender Praxistest des Tageswechsels; die gleiche Nullwert-Regel ist auf Wunsch auch dort aktiviert. Es gibt keine lokale Rücksetzung um Mitternacht.
+explizitem `null` oder ungültigen Werten wird keine 0 ergänzt.
+
+Bei G1T kann **Heute geladen** auf die Portal-Energiebilanz zurückgreifen,
+wenn der Live-Tageswert fehlt. Die Bridge gleicht Wechselrichter und Wallbox
+mit der Geräteliste der Anlage ab. Der Wert gilt für genau eine eindeutig
+zugeordnete Wallbox. Die Portalabfrage erfolgt höchstens alle fünf Minuten.
+Fehlende G1T-Tages- und Sitzungswerte bleiben unbekannt.
 Die bisherigen Geräte-/Entitäts-Unique-IDs bleiben erhalten.
 
 Beim G2T-Test vom 28.10.2026 ergaben die erste Sitzung mit 3,73 kWh und die
