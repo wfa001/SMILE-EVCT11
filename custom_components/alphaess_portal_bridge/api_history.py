@@ -188,12 +188,31 @@ class ApiHistory:
             self._closed = True
         await self.async_flush()
 
+    @staticmethod
+    def _collect_latest_exchange(exchanges: dict, at: float, event: dict) -> None:
+        method, step = event.get("method"), event.get("step")
+        if method not in ("GET", "POST", "PATCH") or not isinstance(step, str):
+            return
+        # The fixed step labels also cover supplemental reads with private URLs.
+        exchange = exchanges.setdefault((method, step), {"method": method, "step": step})
+        status = event.get("http_status")
+        fields = ("http_status", "endpoint", "duration_ms", "response", "response_body",
+                  "error", "stage")
+        entry = {"at": _timestamp(at), **{key: event[key] for key in fields if key in event}}
+        # A failed login can have an HTTP status but no response from this endpoint.
+        if isinstance(status, int) and "stage" not in event:
+            exchange["last_response"] = entry
+        accepted = (200,) if method == "GET" else (200, 201, 204)
+        if event.get("error") or (isinstance(status, int) and status not in accepted):
+            exchange["last_error"] = entry
+
     def _build_zip(self, summary: dict, snapshot: dict, cutoff: float) -> BinaryIO:
         output = TemporaryFile()
         try:
             counts = dict.fromkeys(STREAM_FILES, 0)
             first = last = None
             response_ids: set[str] = set()
+            exchanges: dict[tuple[str, str], dict] = {}
             with (
                 TemporaryFile() as responses,
                 ZipFile(output, "w", ZIP_DEFLATED, compresslevel=6) as archive,
@@ -212,6 +231,8 @@ class ApiHistory:
                                     counts[stream] += 1
                                     # Apply the current filter to rows written before an update, too.
                                     event = self._clean(json.loads(zlib.decompress(blob)))
+                                    if stream in {"api", "control"}:
+                                        self._collect_latest_exchange(exchanges, at, event)
                                     if stream == "api" and "response" in event:
                                         body = event.pop("response")
                                         response_id = blake2s(_json(body)).hexdigest()
@@ -244,6 +265,11 @@ class ApiHistory:
                 manifest = json.loads(Path(__file__).with_name("manifest.json").read_text(encoding="utf-8"))
                 summary["bridge_manifest_version"] = manifest["version"]
                 archive.writestr("diagnose.json", _json(summary))
+                archive.writestr("api-uebersicht.json", _json({
+                    "history_enabled": self.enabled,
+                    "retention_hours": RETENTION_HOURS,
+                    "endpoints": [exchanges[key] for key in sorted(exchanges)],
+                }))
                 if not counts["api"]:
                     archive.writestr("api-momentaufnahme.json", _json(self._clean(snapshot)))
             output.seek(0)
