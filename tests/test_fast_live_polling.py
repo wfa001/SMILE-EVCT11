@@ -101,11 +101,16 @@ class FakeAPI:
     def __init__(self):
         self.statuses = []
         self.request_count = 0
+        self.missing_live_status_replies = 0
         self._live_status_unavailable_serials = set()
 
     async def async_get_live_status(self, serial):
         self.request_count += 1
         value = self.statuses.pop(0)
+        if isinstance(value, dict) and value.get("status") in (None, ""):
+            self.missing_live_status_replies += 1
+        else:
+            self.missing_live_status_replies = 0
         if isinstance(value, Exception):
             raise value
         return value

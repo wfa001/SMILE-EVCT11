@@ -87,6 +87,8 @@ def attach_configuration(coordinator, generation="g2T"):
 def coordinator_with(status, *, generation="g2T", source="real_status"):
     item = attach_configuration(FakeCoordinator(generation), generation)
     item.data.update(wallbox_status=status, wallbox_status_source=source)
+    if isinstance(status, dict) and status.get("status") in (None, ""):
+        item.api.missing_live_status_replies = 2
     return item
 
 
@@ -272,9 +274,9 @@ class PollingTests(unittest.IsolatedAsyncioTestCase):
         item.start_live_polling()
         await calls[-1].execute()
         self.assertEqual(power.native_value, 3200.0)
-        for _ in range(2):
+        for expected in (None, MESSAGE):
             await calls[-1].execute()
-            self.assertEqual(sensor.native_value, MESSAGE)
+            self.assertEqual(sensor.native_value, expected)
             self.assertIsNone(power.native_value)
             self.assertTrue(item._live_status_supported)
             self.assertEqual(calls[-1].delay, 5)
@@ -290,7 +292,7 @@ class PollingTests(unittest.IsolatedAsyncioTestCase):
         item.api.statuses = [{}, {"status": "PendingStart"}]
         item.start_live_polling()
         await calls[-1].execute()
-        self.assertEqual(status_sensor(item).native_value, MESSAGE)
+        self.assertIsNone(status_sensor(item).native_value)
         self.assertTrue(item._live_status_supported)
         await calls[-1].execute()
         self.assertEqual(status_sensor(item).native_value, "Bereit")
@@ -298,9 +300,9 @@ class PollingTests(unittest.IsolatedAsyncioTestCase):
     async def test_g1t_statusless_replies_and_reconnection_keep_polling(self):
         item = coordinator_with({"status": "Charging", "power": 3200}, generation="g1T")
         item.api.statuses = [{"gunIsLock": False, "chargingAmount": 11.6}, {}, {"status": "NotInsertedGun", "power": 0.0}]
-        for _ in range(2):
+        for expected in (None, MESSAGE):
             await item._async_live_refresh(None)
-            self.assertEqual(status_sensor(item).native_value, MESSAGE)
+            self.assertEqual(status_sensor(item).native_value, expected)
             self.assertTrue(item._live_status_supported)
             self.assertEqual(calls[-1].delay, 5)
             self.assertIsNone(NS["AlphaESSWallboxPowerSensor"](item, None).native_value)
@@ -351,7 +353,7 @@ class PollingTests(unittest.IsolatedAsyncioTestCase):
 
         item.api.async_get_wallbox_data = fetch_full
         item.data = await item._async_update_data()
-        self.assertEqual(status_sensor(item).native_value, MESSAGE)
+        self.assertIsNone(status_sensor(item).native_value)
         self.assertNotIn("power", item.data["wallbox_status"])
 
     async def test_rs485_failure_does_not_mark_cloud_api_disconnected(self):
@@ -366,7 +368,8 @@ class PollingTests(unittest.IsolatedAsyncioTestCase):
         item._last_full_success = datetime.now(timezone.utc)
         item._full_consecutive_errors = 0
         item.update_interval = timedelta(seconds=30)
-        item.api.statuses = [{"chargingAmount": 11.6}]
+        item.api.statuses = [{"chargingAmount": 11.6}, {}]
+        await item._async_live_refresh(None)
         await item._async_live_refresh(None)
         self.assertEqual(ns["api_connection_status"](item), "Verbunden")
         self.assertEqual(status_sensor(item).native_value, MESSAGE)

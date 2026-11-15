@@ -24,10 +24,11 @@ class DiagnosticsArchiveView(HomeAssistantView):
     name = f"api:{DOMAIN}:diagnostics-archive"
     requires_auth = True
     requires_grant = True
+    tracks_progress = False
 
     def __init__(self, hass):
         self.hass = hass
-        self._active: set[str] = set()
+        self._active: dict[str, dict[str, int]] = {}
 
     async def get(self, request, entry_id: str):
         if not request[KEY_HASS_USER].is_admin:
@@ -36,6 +37,9 @@ class DiagnosticsArchiveView(HomeAssistantView):
         coordinator = self.hass.data.get(DOMAIN, {}).get(entry_id)
         if entry is None or coordinator is None:
             raise web.HTTPNotFound()
+        if self.tracks_progress and request.headers.get("X-AlphaESS-Diagnostics-Progress") == "1":
+            return web.json_response(self._active.get(entry_id, {"percent": 0}),
+                                     headers={"Cache-Control": "no-store"})
         if entry_id in self._active:
             raise web.HTTPConflict(text="Ein Diagnose-Export läuft bereits.")
         grant = None
@@ -45,17 +49,20 @@ class DiagnosticsArchiveView(HomeAssistantView):
                 raise web.HTTPForbidden(text="Erweiterte API-Diagnose erneut freigeben.")
             coordinator._advanced_diagnostics_until = 0.0
 
-        self._active.add(entry_id)
+        progress = self._active[entry_id] = {"percent": 0}
         try:
-            return await self._download(request, entry, coordinator)
+            return await self._download(request, entry, coordinator, progress)
         except web.HTTPServiceUnavailable:
             if grant is not None and coordinator._advanced_diagnostics_until == 0.0 and grant > time.monotonic():
                 coordinator._advanced_diagnostics_until = grant
             raise
         finally:
-            self._active.remove(entry_id)
+            del self._active[entry_id]
 
-    async def _download(self, request, entry, coordinator):
+    async def _download(self, request, entry, coordinator, progress):
+        def report(percent: int) -> None:
+            progress["percent"] = percent
+
         stamp = datetime.now(ZoneInfo(self.hass.config.time_zone)).strftime("%Y-%m-%d_%H-%M-%S")
         try:
             summary = await async_get_config_entry_diagnostics(
@@ -70,16 +77,18 @@ class DiagnosticsArchiveView(HomeAssistantView):
             summary["wallbox"] = {
                 key: wallbox.get(key) for key in ("model", "softwareVersion", "hardwareVersion")
             }
+            report(3)
             if wallbox_serial := data.get("wallbox_serial"):
                 summary["site_energy_seven_days"] = (
                     await coordinator.api.async_get_site_energy_diagnostics(wallbox_serial)
                 )
+            report(8)
             archive = await coordinator.api.history.async_export(summary, {
                 "system": data.get("system"),
                 "configuration": data.get("configuration"),
                 "live_status": data.get("wallbox_status"),
                 "latest_charge_report": data.get("latest_report"),
-            })
+            }, progress=report if self.tracks_progress else None)
         except Exception:
             _LOGGER.warning("Could not prepare the AlphaESS diagnostics archive")
             raise web.HTTPServiceUnavailable() from None
@@ -105,3 +114,4 @@ class DiagnosticsDownloadView(DiagnosticsArchiveView):
     url = DIAGNOSTICS_DOWNLOAD_PATH + "/{entry_id}"
     name = f"api:{DOMAIN}:diagnostics-download"
     requires_grant = False
+    tracks_progress = True

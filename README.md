@@ -58,7 +58,9 @@ Für Support privat weitergeben.
 In `api-uebersicht.json` stehen je Abfragetyp die letzte bereinigte
 Portalantwort und der letzte Fehler aus dem aufgezeichneten Zeitraum. Ein
 älterer Fehler bleibt nach einem erfolgreichen Abruf mit Zeitstempel sichtbar.
-Für die Übersicht selbst sind keine zusätzlichen Portalabfragen nötig.
+Für die Übersicht selbst sind keine zusätzlichen Portalabfragen nötig. Beim
+Dashboard-Download zeigt eine Prozentanzeige, wie weit die Verarbeitung
+des Verlaufs und die ZIP-Erstellung fortgeschritten sind.
 
 In `api-verlauf.jsonl` stehen die einzelnen Leseabfragen mit Zeitpunkt,
 HTTP-Status und, sofern eine JSON-Antwort vorliegt, einer `response_id`.
@@ -243,7 +245,7 @@ Normale Verbindungsfehler bleiben wiederholbar. HTTP 409 an anderen Endpunkten, 
 
 ## Wallbox-Kommunikation und Fehleranzeigen
 
-Der bestehende **Status**-Sensor zeigt für G1T und G2T **„Keine Kommunikation zwischen Wallbox und Energiespeichersystem“**, wenn die Cloud eine `real-status`-Antwort als Objekt liefert, in der `status` fehlt, `null` oder leer ist. Diese Anzeige entspricht der gemeinsamen G1T-/G2T-Logik des AlphaESS-Webportals. Praktisch wurde sie beim Trennen/Wiederverbinden der RS485-Verbindung an G2T beobachtet; der entsprechende G1T-Praxistest steht aus. Sie beschreibt die fehlende Statusmeldung, keine Diagnose der konkreten elektrischen Ursache.
+Der bestehende **Status**-Sensor zeigt für G1T und G2T **„Keine Kommunikation zwischen Wallbox und Energiespeichersystem“**, wenn in zwei aufeinanderfolgenden `real-status`-Antworten `status` fehlt, `null` oder leer ist. Eine Antwort aus dem Zwischenspeicher zählt dabei nur einmal. Diese Anzeige entspricht der gemeinsamen G1T-/G2T-Logik des AlphaESS-Webportals. Praktisch wurde sie beim Trennen/Wiederverbinden der RS485-Verbindung an G2T beobachtet; der entsprechende G1T-Praxistest steht aus. Sie beschreibt die fehlende Statusmeldung, keine Diagnose der konkreten elektrischen Ursache.
 
 Die Cloud kann dabei weiterhin Energiezähler und den Verriegelungswert liefern. Das bestätigt keine aktive Kommunikation zur Wallbox. Fehlende Leistungswerte werden als unbekannt behandelt. Die Live-Abfrage läuft weiter und zeigt wieder den normalen Status, sobald dieser zurückkommt.
 

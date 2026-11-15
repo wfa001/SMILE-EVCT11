@@ -59,18 +59,46 @@ customElements.whenDefined("home-assistant").then(() => {
       this.clearLink();
     }
 
+    async showProgress(path, signal) {
+      try {
+        const response = await fetch(path, {
+          cache: "no-store",
+          headers: { "X-AlphaESS-Diagnostics-Progress": "1" },
+          signal,
+        });
+        if (!response.ok || !response.headers.get("Content-Type")?.startsWith("application/json")) return;
+        const { percent } = await response.json();
+        if (!signal.aborted && Number.isInteger(percent) && percent >= 0 && percent < 100) {
+          this.status.textContent = `Diagnose-ZIP wird erstellt … ${percent} %`;
+        }
+      } catch {
+        // The download continues if a progress poll fails.
+      }
+    }
+
     async download() {
       if (this.busy || !this.client?.user?.is_admin) return;
       this.clearLink();
       this.busy = true;
       this.button.disabled = true;
-      this.status.textContent = "Diagnose-ZIP wird erstellt …";
+      this.status.textContent = "Diagnose-ZIP wird erstellt … 0 %";
+      const progress = new AbortController();
+      let timer;
       try {
         const { path } = await this.client.callWS({
           type: "auth/sign_path",
           path: this.path,
+          expires: 300,
         });
-        const response = await fetch(path);
+        const download = fetch(path);
+        const poll = async () => {
+          await this.showProgress(path, progress.signal);
+          if (!progress.signal.aborted) timer = setTimeout(poll, 1000);
+        };
+        timer = setTimeout(poll, 1000);
+        const response = await download;
+        progress.abort();
+        clearTimeout(timer);
         if (response.status === 409) {
           this.status.textContent = "Ein Diagnose-Export läuft bereits. Bitte versuche es gleich erneut.";
           return;
@@ -86,10 +114,12 @@ customElements.whenDefined("home-assistant").then(() => {
         this.link.href = URL.createObjectURL(blob);
         this.link.hidden = false;
         this.link.click();
-        this.status.textContent = "Diagnose-ZIP ist bereit.";
+        this.status.textContent = "Diagnose-ZIP ist bereit (100 %).";
       } catch {
         this.status.textContent = "Diagnose-ZIP konnte nicht heruntergeladen werden. Bitte versuche es erneut.";
       } finally {
+        progress.abort();
+        clearTimeout(timer);
         this.busy = false;
         this.button.disabled = !this.client?.user?.is_admin;
       }

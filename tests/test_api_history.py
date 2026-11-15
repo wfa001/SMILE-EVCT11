@@ -103,7 +103,7 @@ class ApiHistoryTests(unittest.IsolatedAsyncioTestCase):
                 "userCity": "PRIVATE-CITY", "deviceCountryName": "PRIVATE-COUNTRY",
                 "deviceStateName": "PRIVATE-STATE", "installerDescription": "PRIVATE-NAME",
                 "installerCompany": "PRIVATE-COMPANY", "installerId": "PRIVATE-ID",
-                "installerLicense": "PRIVATE-LICENSE", "userAddress": "PRIVATE-ADDRESS",
+                "installerLicense": "PRIVATE-LICENSE", "installRecordId": "PRIVATE-INSTALL", "userAddress": "PRIVATE-ADDRESS",
             },
             "wifi": {"lanIP": "192.168.10.20", "wifi_pwd": "PRIVATE-WIFI"},
             "site_id": "PRIVATE-SITE",
@@ -115,8 +115,16 @@ class ApiHistoryTests(unittest.IsolatedAsyncioTestCase):
             (self.now, "api", {"response": legacy}),
             (self.now, "control", {"request": {"configuration": legacy}}),
         ], self.now)
-        recorded.record("api", response=legacy)
-        with await recorded.async_export({}, {}) as output, ZipFile(output) as archive:
+        recorded.record("api", method="GET", step="wallbox configuration", http_status=200,
+                        response=legacy)
+        progress = []
+        with await recorded.async_export({}, {}, progress.append) as output, ZipFile(output) as archive:
+            self.assertEqual(progress[0], 10)
+            self.assertEqual(progress[-1], 99)
+            self.assertEqual(progress, sorted(set(progress)))
+            self.assertIn(95, progress)
+            overview = json.loads(archive.read("api-uebersicht.json"))
+            self.assertNotIn(b"PRIVATE-INSTALL", archive.read("api-uebersicht.json"))
             [row] = map(json.loads, archive.read("api-antworten.jsonl").splitlines())
             [control] = map(json.loads, archive.read("steuerung.jsonl").splitlines())
             sanitized = {
@@ -127,6 +135,7 @@ class ApiHistoryTests(unittest.IsolatedAsyncioTestCase):
                 "newPortalField": {"version": 3},
             }
             self.assertEqual(row["response"], sanitized)
+            self.assertEqual(overview["endpoints"][0]["last_response"]["response"], sanitized)
             self.assertEqual(control["request"]["configuration"], sanitized)
 
     async def test_overview_keeps_latest_response_and_previous_error(self):
@@ -214,6 +223,7 @@ class ArchiveDownloadTests(unittest.IsolatedAsyncioTestCase):
             "web": SimpleNamespace(
                 HTTPForbidden=HttpError, HTTPNotFound=HttpError, HTTPConflict=HttpError,
                 HTTPServiceUnavailable=HttpError, StreamResponse=Response,
+                json_response=lambda data, **kwargs: data,
             ),
             "time": SimpleNamespace(monotonic=lambda: self.now),
             "datetime": SimpleNamespace(now=export_time.astimezone),
@@ -222,8 +232,14 @@ class ArchiveDownloadTests(unittest.IsolatedAsyncioTestCase):
         }
         exec(compile(ast.Module(body=nodes, type_ignores=[]), "<archive view>", "exec"), ns)
 
-        async def export(*args):
+        async def export(*args, progress=None):
+            if progress:
+                progress(47)
+                if self.progress_callback:
+                    await self.progress_callback()
             return BytesIO(b"zip")
+
+        self.progress_callback = None
 
         self.now = 100
         self.coordinator = SimpleNamespace(
@@ -263,8 +279,26 @@ class ArchiveDownloadTests(unittest.IsolatedAsyncioTestCase):
         self.coordinator._advanced_diagnostics_until = 0
         with self.assertRaises(self.HttpError):
             await self.direct_view.get({"user": SimpleNamespace(is_admin=False)}, "entry")
-        admin = {"user": SimpleNamespace(is_admin=True)}
+        class Request(dict):
+            headers = {}
+
+        admin = Request(user=SimpleNamespace(is_admin=True))
+        polling = Request(admin)
+        polling.headers = {"X-AlphaESS-Diagnostics-Progress": "1"}
+        unauthorized = Request(user=SimpleNamespace(is_admin=False))
+        unauthorized.headers = polling.headers
+        with self.assertRaises(self.HttpError):
+            await self.direct_view.get(unauthorized, "entry")
+        self.assertEqual(await self.direct_view.get(polling, "entry"), {"percent": 0})
+
+        async def check_progress():
+            self.assertEqual(await self.direct_view.get(polling, "entry"), {"percent": 47})
+            with self.assertRaises(self.HttpError):
+                await self.direct_view.get(admin, "entry")
+
+        self.progress_callback = check_progress
         result = await self.direct_view.get(admin, "entry")
+        self.assertEqual(await self.direct_view.get(polling, "entry"), {"percent": 0})
         self.assertEqual(
             result.headers["Content-Disposition"],
             'attachment; filename="alphaess-wallbox-diagnose_2026-11-10_08-36-25.zip"',

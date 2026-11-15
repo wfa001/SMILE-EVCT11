@@ -126,6 +126,7 @@ class AlphaESSPortalApi:
         self._settings_write_lock = asyncio.Lock()
         self._live_status_lock = asyncio.Lock()
         self._live_status_cache: dict[str, Any] | None = None
+        self.missing_live_status_replies = 0
         self._live_status_cached_at = 0.0
         self._live_status_cached_serial: str | None = None
         self._live_status_unavailable_serials: set[str] = set()
@@ -183,10 +184,21 @@ class AlphaESSPortalApi:
                 if history := getattr(self, "history", None):
                     history.record("bridge", event="cache_hit", step="wallbox status")
                 return copy.deepcopy(self._live_status_cache)
-            status = await self._async_get(
-                f"/internal/v1/ev-charger/{wallbox_serial}/real-status",
-                step="wallbox status",
-            )
+            try:
+                status = await self._async_get(
+                    f"/internal/v1/ev-charger/{wallbox_serial}/real-status",
+                    step="wallbox status",
+                )
+            except (AuthenticationError, PortalConnectionError, ValueError):
+                self.missing_live_status_replies = 0
+                self._live_status_cache = None
+                raise
+            if isinstance(status, dict) and status.get("status") in (None, ""):
+                if self._live_status_cached_serial != wallbox_serial:
+                    self.missing_live_status_replies = 0
+                self.missing_live_status_replies = min(2, self.missing_live_status_replies + 1)
+            else:
+                self.missing_live_status_replies = 0
             self._live_status_cache = copy.deepcopy(status)
             self._live_status_cached_serial = wallbox_serial
             self._live_status_cached_at = time.monotonic()
