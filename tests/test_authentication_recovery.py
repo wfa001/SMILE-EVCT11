@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import copy
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 import time
 import runpy
 import unittest
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "alphaess_portal_bridge"
 
@@ -63,7 +64,7 @@ class Session:
 
 API_NS = {
     'SettingsWriteFeedback': runpy.run_path(str(ROOT / 'write_feedback.py'))['SettingsWriteFeedback'],
-    "asyncio": asyncio, "time": time, "API_URL": "https://example.invalid/api",
+    "asyncio": asyncio, "copy": copy, "time": time, "API_URL": "https://example.invalid/api",
     "PORTAL_HEADERS": {}, "CONF_USERNAME": "username", "CONF_PASSWORD": "password",
     "CONF_SYSTEM_SERIAL": "system_serial", "CONF_WALLBOX_SERIAL": "wallbox_serial",
     "CONF_AUTHENTICATION_PAUSED": "authentication_paused",
@@ -74,7 +75,7 @@ API_NS = {
 API = extract("api.py", "AlphaESSPortalApi", {
     "__init__", "_async_token", "_async_create_token", "_reject_authentication",
     "_async_post", "_async_select_region", "_async_get", "_async_authenticated_post",
-    "_history_response_body", "async_control_wallbox",
+    "_history_response_body", "async_control_wallbox", "async_get_live_status",
 }, API_NS, include=("AuthenticationError", "PortalConnectionError", "WallboxCommandUnconfirmed"))
 AuthenticationError = API_NS["AuthenticationError"]
 PortalConnectionError = API_NS["PortalConnectionError"]
@@ -133,6 +134,27 @@ class APITests(unittest.IsolatedAsyncioTestCase):
                 sent = session.post.call_count if case == "timeout" else len(session.logins)
                 self.assertEqual(sent, posts)
                 refresh.assert_not_awaited()
+
+    async def test_only_distinct_successful_live_replies_confirm_missing_status(self):
+        api, _ = make_api([])
+        api._async_get = AsyncMock(side_effect=[
+            {}, {"chargingAmount": 2.11}, {"status": "Charging"}, {},
+            PortalConnectionError(503), {},
+        ])
+        clock = Mock()
+        with patch.dict(API_NS, {"time": SimpleNamespace(monotonic=clock)}):
+            for at, expected in ((100, 1), (101, 1), (105, 2), (110, 0), (115, 1)):
+                clock.return_value = at
+                await api.async_get_live_status("wallbox")
+                self.assertEqual(api.missing_live_status_replies, expected)
+            clock.return_value = 120
+            with self.assertRaises(PortalConnectionError):
+                await api.async_get_live_status("wallbox")
+            self.assertEqual(api.missing_live_status_replies, 0)
+            clock.return_value = 125
+            await api.async_get_live_status("wallbox")
+            self.assertEqual(api.missing_live_status_replies, 1)
+        self.assertEqual(api._async_get.await_count, 6)
 
     async def test_optional_site_request_denial_preserves_session_and_omits_private_path(self):
         api, session = make_api([(403, {"private": "test"})])

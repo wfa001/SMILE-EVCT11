@@ -72,7 +72,7 @@ def wallbox_communication_missing(coordinator: AlphaESSWallboxCoordinator) -> bo
 
     A real_status source denotes a successfully received live response. Never
     infer this from a failed request, an unsupported endpoint, system fallback
-    or power=0. The portal applies the same display rule to both generations.
+    or power=0. Require two fresh responses to filter brief status gaps.
     """
     data = coordinator.data or {}
     status = data.get("wallbox_status")
@@ -82,6 +82,7 @@ def wallbox_communication_missing(coordinator: AlphaESSWallboxCoordinator) -> bo
         and data.get("wallbox_status_source") == "real_status"
         and isinstance(status, dict)
         and status.get("status") in (None, "")
+        and coordinator.api.missing_live_status_replies >= 2
     )
 
 

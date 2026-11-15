@@ -5,6 +5,7 @@ import asyncio
 from collections import deque
 from contextlib import closing
 from datetime import datetime, timezone
+from functools import lru_cache
 from hashlib import blake2s
 import json
 import logging
@@ -41,7 +42,7 @@ _REMOVED_FIELDS = re.compile(
     r"state(?:name|code)?|province|region|street|postalcode|zipcode|address.*|location.*)"
     r"|(?:lan|wan|local|public|private|gateway)?ip(?:v[46]|address)?"
     r"|(?:wifi)?(?:ssid|bssid|pwd|passphrase)|mac(?:address)?"
-    r"|siteid|(?:user|device|site)(?:description|remark)|realname|fullname)$",
+    r"|siteid|installrecordid|(?:user|device|site)(?:description|remark)|realname|fullname)$",
     re.I,
 )
 _PRIVATE = re.compile(
@@ -206,7 +207,14 @@ class ApiHistory:
         if event.get("error") or (isinstance(status, int) and status not in accepted):
             exchange["last_error"] = entry
 
-    def _build_zip(self, summary: dict, snapshot: dict, cutoff: float) -> BinaryIO:
+    def _build_zip(self, summary: dict, snapshot: dict, cutoff: float, progress) -> BinaryIO:
+        @lru_cache(maxsize=32)
+        def clean_response(encoded: bytes) -> tuple[Any, str]:
+            body = self._clean(json.loads(encoded))
+            return body, blake2s(_json(body)).hexdigest()
+
+        report = progress or (lambda percent: None)
+        report(10)
         output = TemporaryFile()
         try:
             counts = dict.fromkeys(STREAM_FILES, 0)
@@ -220,6 +228,10 @@ class ApiHistory:
                 if self.path.exists():
                     with closing(self._connect()) as connection, connection:
                         connection.execute("BEGIN")
+                        total = connection.execute(
+                            "SELECT COUNT(*) FROM history WHERE at >= ?", (cutoff,)
+                        ).fetchone()[0]
+                        processed, percent = 0, 10
                         for stream, filename in STREAM_FILES.items():
                             with archive.open(filename, "w", force_zip64=True) as part:
                                 for at, blob in connection.execute(
@@ -230,23 +242,33 @@ class ApiHistory:
                                     last = at if last is None else max(last, at)
                                     counts[stream] += 1
                                     # Apply the current filter to rows written before an update, too.
-                                    event = self._clean(json.loads(zlib.decompress(blob)))
-                                    if stream in {"api", "control"}:
-                                        self._collect_latest_exchange(exchanges, at, event)
-                                    if stream == "api" and "response" in event:
-                                        body = event.pop("response")
-                                        response_id = blake2s(_json(body)).hexdigest()
+                                    raw = json.loads(zlib.decompress(blob))
+                                    if stream == "api" and "response" in raw:
+                                        body, response_id = clean_response(_json(raw.pop("response")))
+                                        event = self._clean(raw)
+                                        self._collect_latest_exchange(exchanges, at, {**event, "response": body})
                                         event["response_id"] = response_id
                                         if response_id not in response_ids:
                                             response_ids.add(response_id)
                                             responses.write(_json({"id": response_id, "response": body}) + b"\n")
+                                    else:
+                                        event = self._clean(raw)
+                                        if stream in {"api", "control"}:
+                                            self._collect_latest_exchange(exchanges, at, event)
                                     part.write(_json(event) + b"\n")
+                                    processed += 1
+                                    next_percent = 10 + 79 * processed // total
+                                    if next_percent > percent:
+                                        percent = next_percent
+                                        report(percent)
                 else:
                     for filename in STREAM_FILES.values():
                         archive.writestr(filename, b"")
+                report(90)
                 responses.seek(0)
                 with archive.open(_RESPONSES_FILE, "w", force_zip64=True) as part:
                     copyfileobj(responses, part)
+                report(95)
                 summary["api_history"] = {
                     "archive_format": 2,
                     "enabled": self.enabled,
@@ -273,15 +295,18 @@ class ApiHistory:
                 if not counts["api"]:
                     archive.writestr("api-momentaufnahme.json", _json(self._clean(snapshot)))
             output.seek(0)
+            report(99)
             return output
         except BaseException:
             output.close()
             raise
 
-    async def async_export(self, summary: dict, snapshot: dict) -> BinaryIO:
+    async def async_export(self, summary: dict, snapshot: dict, progress=None) -> BinaryIO:
         await self.async_flush()
+        loop = asyncio.get_running_loop()
         return await self.hass.async_add_executor_job(
-            self._build_zip, self._clean(summary), snapshot, time.time() - RETENTION_SECONDS
+            self._build_zip, self._clean(summary), snapshot, time.time() - RETENTION_SECONDS,
+            (lambda percent: loop.call_soon_threadsafe(progress, percent)) if progress else None,
         )
 
 

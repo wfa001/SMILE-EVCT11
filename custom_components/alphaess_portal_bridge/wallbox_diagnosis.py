@@ -44,7 +44,8 @@ def _fault_code(status, model):
             'fault_text': _FAULT_NAMES[canonical] if known else None}
 
 
-def summarize_wallbox(*, profile, model, status, source, portal, age, stale_after):
+def summarize_wallbox(*, profile, model, status, source, portal, age, stale_after,
+                      missing_status_confirmed=True):
     """Return fixed vocabulary; no values from unknown status fields in text."""
     portal = portal if isinstance(portal, str) and portal in {'Verbunden', 'Gestört', 'Getrennt'} else 'Unbekannt'
     source = source if isinstance(source, str) and source in {'real_status', 'system'} else 'unknown'
@@ -59,7 +60,9 @@ def summarize_wallbox(*, profile, model, status, source, portal, age, stale_afte
     missing = fresh and source == 'real_status' and raw_status in (None, '')
     normal = fresh and isinstance(raw_status, str) and raw_status in _NORMAL
     disconnected = fresh and raw_status == 'Disconnected'
-    communication = ('Nicht aktuell prüfbar' if not fresh else 'Keine Statusangabe' if missing
+    missing_message = 'Status vorübergehend nicht verfügbar'
+    communication = ('Nicht aktuell prüfbar' if not fresh
+                     else ('Keine Statusangabe' if missing_status_confirmed else missing_message) if missing
                      else 'Getrennt gemeldet' if disconnected
                      else 'Status empfangen' if source == 'real_status' and isinstance(raw_status, str) and raw_status
                      else 'Status aus Systemdaten' if isinstance(raw_status, str) and raw_status
@@ -69,7 +72,8 @@ def summarize_wallbox(*, profile, model, status, source, portal, age, stale_afte
     elif fault:
         summary = 'Wallbox meldet Störung'
     elif missing:
-        summary = 'Keine Statusrückmeldung'
+        summary = ('Keine Statusrückmeldung' if missing_status_confirmed
+                   else missing_message)
     elif disconnected:
         summary = 'Geräteverbindung getrennt gemeldet'
     elif portal != 'Verbunden':
@@ -107,7 +111,8 @@ def coordinator_diagnosis(coordinator, wallbox):
     limit = 25 if source == 'real_status' and getattr(coordinator, '_live_status_supported', None) is True else max(90, 3 * interval)
     return summarize_wallbox(profile=profile, model=wallbox.get('model'),
         status=data.get('wallbox_status'), source=source,
-        portal=getattr(coordinator, 'api_connection_status', 'Unbekannt'), age=age, stale_after=limit)
+        portal=getattr(coordinator, 'api_connection_status', 'Unbekannt'), age=age, stale_after=limit,
+        missing_status_confirmed=coordinator.api.missing_live_status_replies >= 2)
 
 
 def public_diagnosis(snapshot):

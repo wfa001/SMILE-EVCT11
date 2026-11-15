@@ -114,6 +114,7 @@ class PrivacyTests(unittest.TestCase):
         email = "private@example.com"
 
         class FakeAPI:
+            missing_live_status_replies = 0
             @staticmethod
             def _find_wallbox_data(document, key):
                 return document["wallbox"]
@@ -210,6 +211,7 @@ class PrivacyTests(unittest.TestCase):
         }
 
         class FakeAPI:
+            missing_live_status_replies = 0
             @staticmethod
             def _find_wallbox_data(document, key):
                 return document["wallbox"]
