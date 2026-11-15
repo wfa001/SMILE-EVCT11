@@ -35,13 +35,24 @@ class HistoryTests(unittest.TestCase):
     def test_energy_tiles_are_compact_and_single_tile_uses_full_width(self):
         for entities in ({'today_energy':'sensor.day','last_energy':'sensor.session'},
                          {'last_energy':'sensor.session'}):
-            config=builder.build_dashboard([builder.WallboxDashboard('A','Garage','g1T',entities)])
+            config=builder.build_dashboard([builder.WallboxDashboard('A','Garage','g2T',entities)])
             tiles=[c for c in cards(config['views'][0]) if c.get('type')=='tile']
             self.assertEqual(len(tiles),len(entities))
             self.assertTrue(all(c['grid_options']['rows']==1 for c in tiles))
             self.assertTrue(all(c['grid_options']['columns']==(6 if len(entities)==2 else 12) for c in tiles))
             session=next(c for c in tiles if c['entity']=='sensor.session')
             self.assertEqual(session['name'],'Ladesitzung')
+
+    def test_g1t_dashboard_omits_legacy_session_entities(self):
+        config = builder.build_dashboard([builder.WallboxDashboard("A", "Garage", "g1T", {
+            "status": "sensor.status", "today_energy": "sensor.day",
+            "last_energy": "sensor.live_session", "last_completed_energy": "sensor.last_charge",
+        })])
+        overview = list(cards(config["views"][0]))
+        daily = next(card for card in overview if card.get("type") == "tile" and card.get("entity") == "sensor.day")
+        self.assertEqual(daily["grid_options"]["columns"], 12)
+        for hidden in ("sensor.live_session", "sensor.last_charge", "Ladesitzung", "Letzte Ladung"):
+            self.assertNotIn(hidden, str(config))
 
     def test_smart_mode_history_never_claims_measured_phases_or_creates_g1_features(self):
         entities={'obc_phase_select':'select.phase','smart_mode':'switch.smart'}

@@ -237,29 +237,37 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
             left.append(_condition(_note("> ⚠️ **Keine Kommunikation zwischen Wallbox und Energiespeichersystem**"), entity,
                                    "Keine Kommunikation zwischen Wallbox und Energiespeichersystem"))
         left.append(_tile(entity, "Status", icon="mdi:ev-station"))
-    last_completed = e.get("last_completed_energy")
-    session_key = "last_completed_energy" if last_completed else "last_energy"
-    energy_count = sum(bool(e.get(key)) for key in ("today_energy", session_key))
-    for key, name, icon in (("today_energy", "Heute geladen", "mdi:calendar-today"),
-                            (session_key, "Letzte Ladung" if last_completed else "Ladesitzung", "mdi:ev-plug-type2")):
-        if entity := e.get(key):
+    last_completed = None if g1 else e.get("last_completed_energy")
+    session = None if g1 else last_completed or e.get("last_energy")
+    energy_tiles = (
+        (e.get("today_energy"), "Heute geladen", "mdi:calendar-today"),
+        (session, "Letzte Ladung" if last_completed else "Ladesitzung", "mdi:ev-plug-type2"),
+    )
+    energy_count = sum(bool(entity) for entity, _, _ in energy_tiles)
+    for entity, name, icon in energy_tiles:
+        if entity:
             card = _tile(entity, name, icon=icon, columns=6 if energy_count == 2 else 12)
             card["grid_options"]["rows"] = 1
             left.append(_available(card, entity) if g1 else card)
     if last_completed and (status_entity := e.get("status")):
-        pending = "" if g1 else "**Aktuelle Ladung:** Energiewert ausstehend"
+        pending = "**Aktuelle Ladung:** Energiewert ausstehend"
         left.append(_condition(_note(
             f"{{% set kwh = state_attr('{last_completed}', 'Aktuelle Ladung (kWh)') %}}"
             f"{{{{ {json.dumps(pending)} if kwh is none else "
             "'**Aktuelle Ladung:** ' ~ (kwh | string | replace('.', ',')) ~ ' kWh' }}"
         ), status_entity, "Lädt"))
     if energy_count:
-        left.append(_help("Energieangaben erklärt",
-            "**Heute geladen:** Tageszähler des Portals. " + (
+        energy_help = []
+        if e.get("today_energy"):
+            energy_help.append("**Heute geladen:** Tageszähler des Portals.")
+        if last_completed:
+            energy_help.append(
                 "**Letzte Ladung:** Zuletzt gemeldeter Sitzungswert, lokal gespeichert. "
                 "Das Portal kann den Wert nach Ladeende noch aktualisieren."
-                if last_completed else "**Ladesitzung:** Live-Wert der aktuellen oder letzten Sitzung."
-            )))
+            )
+        elif session:
+            energy_help.append("**Ladesitzung:** Live-Wert der aktuellen oder letzten Sitzung.")
+        left.append(_help("Energieangaben erklärt", " ".join(energy_help)))
     rows = [{"entity": e[key], "name": name, "icon": icon} for key, name, icon in (
         ("vehicle_connected", "Fahrzeug angeschlossen", "mdi:car-electric"),
         ("gun_locked", "Ladestecker verriegelt", "mdi:lock"),

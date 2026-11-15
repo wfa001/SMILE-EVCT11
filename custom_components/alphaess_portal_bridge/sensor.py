@@ -65,29 +65,31 @@ async def async_setup_entry(
 ) -> None:
     """Set up wallbox sensors."""
     coordinator: AlphaESSWallboxCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
-        [
-            AlphaESSWallboxStatusSensor(coordinator, entry),
-            AlphaESSBridgeConnectionSensor(coordinator, entry),
-            AlphaESSWallboxDiagnosisSensor(coordinator, entry),
-            AlphaESSWallboxPowerSensor(coordinator, entry),
-            AlphaESSYesNoSensor(coordinator, entry, "Fahrzeug angeschlossen", "vehicle_connected"),
-            AlphaESSYesNoSensor(coordinator, entry, "Ladestecker verriegelt", "gun_locked"),
-            AlphaESSWallboxDailyEnergySensor(coordinator, entry),
+    sensors = [
+        AlphaESSWallboxStatusSensor(coordinator, entry),
+        AlphaESSBridgeConnectionSensor(coordinator, entry),
+        AlphaESSWallboxDiagnosisSensor(coordinator, entry),
+        AlphaESSWallboxPowerSensor(coordinator, entry),
+        AlphaESSYesNoSensor(coordinator, entry, "Fahrzeug angeschlossen", "vehicle_connected"),
+        AlphaESSYesNoSensor(coordinator, entry, "Ladestecker verriegelt", "gun_locked"),
+        AlphaESSWallboxDailyEnergySensor(coordinator, entry),
+        AlphaESSWallboxModeSensor(coordinator, entry),
+        AlphaESSWallboxGenerationSensor(coordinator, entry),
+        AlphaESSWallboxInformationSensor(coordinator, entry, "Serialnummer", "sn"),
+        AlphaESSWallboxInformationSensor(coordinator, entry, "Modell", "model"),
+        AlphaESSHardwarePhaseSensor(coordinator, entry),
+        AlphaESSWallboxInformationSensor(
+            coordinator, entry, "Startleistung", "startUpPower", UnitOfPower.WATT
+        ),
+        AlphaESSWallboxInformationSensor(coordinator, entry, "Software", "softwareVersion"),
+        AlphaESSWallboxInformationSensor(coordinator, entry, "Hardware", "hardwareVersion"),
+    ]
+    if coordinator.api.wallbox_generation(coordinator.data) != "g1T":
+        sensors.extend((
             AlphaESSWallboxEnergySensor(coordinator, entry, "Aktuelle / letzte Ladesitzung", "lastChargingAmount", "last_energy"),
             AlphaESSWallboxLastChargeSensor(coordinator, entry),
-            AlphaESSWallboxModeSensor(coordinator, entry),
-            AlphaESSWallboxGenerationSensor(coordinator, entry),
-            AlphaESSWallboxInformationSensor(coordinator, entry, "Serialnummer", "sn"),
-            AlphaESSWallboxInformationSensor(coordinator, entry, "Modell", "model"),
-            AlphaESSHardwarePhaseSensor(coordinator, entry),
-            AlphaESSWallboxInformationSensor(
-                coordinator, entry, "Startleistung", "startUpPower", UnitOfPower.WATT
-            ),
-            AlphaESSWallboxInformationSensor(coordinator, entry, "Software", "softwareVersion"),
-            AlphaESSWallboxInformationSensor(coordinator, entry, "Hardware", "hardwareVersion"),
-        ]
-    )
+        ))
+    async_add_entities(sensors)
 
 
 class AlphaESSBridgeConnectionSensor(AlphaESSWallboxEntity, SensorEntity):
@@ -374,7 +376,7 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
             "Hinweis": (
                 "Energie der aktuellen oder letzten Ladesitzung; bleibt nach dem Abstecken zunächst erhalten. "
                 "Beginnt bei einer neuen Sitzung erneut; auch nach Tageswechsel kann das Portal das Feld weglassen. "
-                "Bei erfolgreicher G1T-/G2T-Live-Antwort mit normalem Status und fehlendem lastChargingAmount wird 0 angezeigt. "
+                "Bei erfolgreicher G2T-Live-Antwort mit normalem Status und fehlendem lastChargingAmount wird 0 angezeigt. "
                 "Explizites null, Lesefehler und fehlender Status erhalten keinen Nullersatz. "
                 "Kein dauerhaft gespeicherter letzter Ladevorgang über Tageswechsel hinweg."
             ),
