@@ -125,9 +125,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except ConfigEntryNotReady:
         await api.history.async_close()
         raise
+    generation = api.wallbox_generation(coordinator.data)
     configured_interval = entry.options.get(CONF_UPDATE_INTERVAL)
     if configured_interval not in UPDATE_INTERVAL_OPTIONS:
-        generation = AlphaESSPortalApi.wallbox_generation(coordinator.data)
         configured_interval = (
             DEFAULT_UPDATE_INTERVAL_SECONDS
         )
@@ -197,6 +197,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         if old_entity_id:
             entity_registry.async_remove(old_entity_id)
+
+    if generation == "g1T":
+        # The portal does not report session energy for this profile.
+        for key in ("last_energy", "last_completed_energy"):
+            old_entity_id = entity_registry.async_get_entity_id(
+                Platform.SENSOR, DOMAIN, f"{system_serial}_{key}"
+            )
+            if old_entity_id and (row := entity_registry.async_get(old_entity_id)):
+                if row.config_entry_id == entry.entry_id:
+                    entity_registry.async_remove(old_entity_id)
 
     desired_title = f"AlphaESS Wallbox {system_serial}"
     if entry.title != desired_title:

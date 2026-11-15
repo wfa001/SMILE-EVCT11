@@ -81,6 +81,7 @@ Momentaufnahme.
 
 ### G1T
 
+- Die Bridge stellt **Heute geladen** bereit. Sitzungsenergie meldet das G1T-Portal nicht.
 - Zwei vom Portal gemeldete Zeitfenster mit Aktivierung, Beginn und Ende können in Home Assistant gelesen und bearbeitet werden. Der lokale G1T-Test vom 15.10.2026 bestätigte, dass eine über Home Assistant geänderte Zeit im Portal ankommt. Das bestätigt die Speicherung, nicht die tatsächliche Ladeausführung.
 - Die G1T-Antwort enthält keine globale Ladeeinstellung und keine Lademodi oder Stromwerte pro Zeitfenster. Diese Bedienelemente bleiben deshalb unavailable; die Integration ergänzt keine nicht gemeldeten API-Felder.
 - Die G2T-spezifischen Schutzregeln greifen nicht in den G1T-Pfad ein.
