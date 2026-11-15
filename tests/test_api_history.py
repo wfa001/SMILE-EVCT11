@@ -64,7 +64,7 @@ class ApiHistoryTests(unittest.IsolatedAsyncioTestCase):
         with await self.history().async_export({}, {}) as output, ZipFile(output) as archive:
             self.assertEqual(set(archive.namelist()), {
                 "api-verlauf.jsonl", "bridge-verlauf.jsonl", "steuerung.jsonl", "diagnose.json",
-                "api-antworten.jsonl",
+                "api-antworten.jsonl", "api-uebersicht.json",
             })
             raw = archive.read("api-antworten.jsonl")
             for private in (b"PRIVATE-TOKEN", b"PRIVATE-SERIAL", b"PRIVATE-PASSWORD", b"expired"):
@@ -129,12 +129,45 @@ class ApiHistoryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(row["response"], sanitized)
             self.assertEqual(control["request"]["configuration"], sanitized)
 
+    async def test_overview_keeps_latest_response_and_previous_error(self):
+        recorded = self.history()
+        recorded.record("api", method="GET", step="wallbox status",
+                        http_status=503, response={"message": "Unavailable"})
+        recorded.record("control", method="POST", step="wallbox control",
+                        http_status=401, stage="login", error="AuthenticationError")
+        self.now += 1
+        recorded.record("api", method="GET", step="wallbox status",
+                        http_status=200, response={"power": 7300, "token": "PRIVATE-TOKEN"})
+        recorded.record("api", method="GET", step="site daily energy", http_status=200)
+        self.now += 1
+        recorded.record("control", method="POST", step="wallbox control",
+                        http_status=204, request={"control": "STOP"})
+        recorded.record("control", method="POST", step="wallbox control", error="TimeoutError")
+        with await recorded.async_export({}, {}) as output, ZipFile(output) as archive:
+            raw = archive.read("api-uebersicht.json")
+            endpoints = {entry["step"]: entry for entry in json.loads(raw)["endpoints"]}
+            status = endpoints["wallbox status"]
+            self.assertEqual(status["last_response"]["response"], {"power": 7300, "token": "[redacted]"})
+            self.assertEqual(status["last_error"]["http_status"], 503)
+            self.assertLess(status["last_error"]["at"], status["last_response"]["at"])
+            post = endpoints["wallbox control"]
+            self.assertEqual(post["last_response"]["http_status"], 204)
+            self.assertEqual(post["last_error"]["error"], "TimeoutError")
+            supplemental = endpoints["site daily energy"]
+            self.assertNotIn("endpoint", supplemental["last_response"])
+            self.assertNotIn("response", supplemental["last_response"])
+            self.assertNotIn(b"PRIVATE-TOKEN", raw)
+            self.assertNotIn(b'"request"', raw)
+
     async def test_disabled_archive_exports_only_the_cached_fallback(self):
         recorder = self.history(enabled=False)
         recorder.record("api", response={"not_recorded": True})
         snapshot = {"status": "Charging", "newField": list(range(45)), "checkCode": "PRIVATE-CODE"}
         with await recorder.async_export({}, snapshot) as output, ZipFile(output) as archive:
             self.assertEqual(archive.read("api-verlauf.jsonl"), b"")
+            overview = json.loads(archive.read("api-uebersicht.json"))
+            self.assertEqual(overview["endpoints"], [])
+            self.assertFalse(overview["history_enabled"])
             self.assertEqual(archive.read("api-antworten.jsonl"), b"")
             self.assertEqual(
                 json.loads(archive.read("api-momentaufnahme.json")),

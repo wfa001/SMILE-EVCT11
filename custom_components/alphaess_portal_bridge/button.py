@@ -20,7 +20,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .api import AuthenticationError, PortalConnectionError
+from .api import AuthenticationError, PortalConnectionError, WallboxCommandUnconfirmed
 from .const import DOMAIN
 from .coordinator import AlphaESSWallboxCoordinator
 from .entity import AlphaESSWallboxEntity
@@ -80,8 +80,24 @@ class AlphaESSWallboxControlButton(AlphaESSWallboxEntity, ButtonEntity):
             await self.coordinator.api.async_control_wallbox(self._control)
         except ValueError as err:
             raise HomeAssistantError(str(err)) from err
-        except (AuthenticationError, PortalConnectionError) as err:
-            raise HomeAssistantError("Der Wallbox-Befehl wurde vom Live-Status abgelehnt") from err
+        except AuthenticationError as err:
+            raise HomeAssistantError(
+                "Die Anmeldung oder Sitzung im AlphaESS-Portal wurde abgelehnt."
+            ) from err
+        except WallboxCommandUnconfirmed as err:
+            raise HomeAssistantError(
+                "Das AlphaESS-Portal hat den Wallbox-Befehl nicht bestätigt. "
+                "Prüfe den aktuellen Ladestatus vor einem erneuten Versuch."
+            ) from err
+        except PortalConnectionError as err:
+            if err.step == "wallbox control":
+                raise HomeAssistantError(
+                    f"Das AlphaESS-Portal hat den Wallbox-Befehl abgelehnt (HTTP {err.status})."
+                ) from err
+            raise HomeAssistantError(
+                "Die Prüfung über das AlphaESS-Portal ist fehlgeschlagen. "
+                "Der Wallbox-Befehl wurde nicht gesendet."
+            ) from err
         await self.coordinator.async_request_refresh()
 
 

@@ -27,6 +27,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
+from .control_feedback import control_reason
 from .schedule import schedule_supported, strategy_supported
 from .write_feedback import SettingsWriteFeedback, settings_targets
 
@@ -64,6 +65,10 @@ class PortalConnectionError(Exception):
         self.status = status
         self.step = step
         super().__init__(f"Portal request failed during {step}: {status}")
+
+
+class WallboxCommandUnconfirmed(PortalConnectionError):
+    """The command POST may have reached the portal without a usable result."""
 
 
 def _serialize_settings_write(method):
@@ -535,7 +540,7 @@ class AlphaESSPortalApi:
             history.record("control", event="requested", control=control)
         wallbox_serial = self._wallbox_serial
         if not wallbox_serial:
-            raise PortalConnectionError(step="wallbox control")
+            raise ValueError("Für die Steuerung ist keine Wallbox zugeordnet.")
 
         # Live testing on the G2T confirmed that START/STOP is only acted on
         # when the charging strategy is Manual (chargeStrategy = 0).  Other
@@ -561,15 +566,10 @@ class AlphaESSPortalApi:
             step="wallbox control status",
         )
         status = status_data.get("status") if isinstance(status_data, dict) else None
-        allowed = (
-            {"PendingStart", "ChargingStopped", "CharingStopped"}
-            if control == "START"
-            else {"Charging", "WaitingForChargingPile"}
-        )
-        if status not in allowed:
+        if reason := control_reason(control, None, {}, status, True):
             if history:
                 history.record("control", event="blocked", control=control, reason="wallbox status", status=status)
-            raise PortalConnectionError(step="wallbox control blocked")
+            raise ValueError(reason)
         await self._async_authenticated_post(
             f"/internal/v1/ev-charger/{wallbox_serial}/events",
             {"control": control},
@@ -974,13 +974,15 @@ class AlphaESSPortalApi:
                                    **await self._history_response_body(response))
                 if response.status in (401, 403):
                     raise self._reject_authentication(step, response.status)
+                if response.status == 408 or response.status >= 500:
+                    raise WallboxCommandUnconfirmed(response.status, step)
                 if response.status not in (200, 201, 204):
                     raise PortalConnectionError(response.status, step)
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             if history:
                 history.record("control", **event, error=type(err).__name__,
                                duration_ms=round((time.monotonic() - started) * 1000))
-            raise PortalConnectionError from err
+            raise WallboxCommandUnconfirmed(step=step) from err
 
     async def _async_authenticated_patch(self, path: str, data: dict[str, Any], *, step: str) -> None:
         history = getattr(self, "history", None)
@@ -1082,7 +1084,7 @@ class AlphaESSPortalApi:
                 except (ValueError, aiohttp.ContentTypeError) as err:
                     if history:
                         history.record("api", **event, http_status=response.status, error="invalid JSON")
-                    if supplemental:
+                    if supplemental or step in {"wallbox control settings", "wallbox control status"}:
                         raise PortalConnectionError(response.status, step) from err
                     raise
                 if history:

@@ -55,6 +55,11 @@ Browser an die eigene Home-Assistant-Adresse anhängen. Die ZIP enthält
 Betriebs- und Ladedaten, einschließlich Zeitpunkten und Energiemengen.
 Für Support privat weitergeben.
 
+In `api-uebersicht.json` stehen je Abfragetyp die letzte bereinigte
+Portalantwort und der letzte Fehler aus dem aufgezeichneten Zeitraum. Ein
+älterer Fehler bleibt nach einem erfolgreichen Abruf mit Zeitstempel sichtbar.
+Für die Übersicht selbst sind keine zusätzlichen Portalabfragen nötig.
+
 In `api-verlauf.jsonl` stehen die einzelnen Leseabfragen mit Zeitpunkt,
 HTTP-Status und, sofern eine JSON-Antwort vorliegt, einer `response_id`.
 Diese verweist auf die entsprechende `id` in `api-antworten.jsonl`.

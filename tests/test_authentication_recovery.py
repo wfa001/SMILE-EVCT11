@@ -69,13 +69,22 @@ API_NS = {
     "CONF_AUTHENTICATION_PAUSED": "authentication_paused",
     "async_get_clientsession": lambda hass: hass.session,
     "aiohttp": SimpleNamespace(ClientTimeout=lambda **kwargs: None, ClientError=ConnectionError),
+    "control_reason": runpy.run_path(str(ROOT / "control_feedback.py"))["control_reason"],
 }
 API = extract("api.py", "AlphaESSPortalApi", {
     "__init__", "_async_token", "_async_create_token", "_reject_authentication",
-    "_async_post", "_async_select_region", "_async_get",
-}, API_NS, include=("AuthenticationError", "PortalConnectionError"))
+    "_async_post", "_async_select_region", "_async_get", "_async_authenticated_post",
+    "_history_response_body", "async_control_wallbox",
+}, API_NS, include=("AuthenticationError", "PortalConnectionError", "WallboxCommandUnconfirmed"))
 AuthenticationError = API_NS["AuthenticationError"]
 PortalConnectionError = API_NS["PortalConnectionError"]
+WallboxCommandUnconfirmed = API_NS["WallboxCommandUnconfirmed"]
+ControlButton = extract("button.py", "AlphaESSWallboxControlButton", {"async_press"}, {
+    "AuthenticationError": AuthenticationError,
+    "PortalConnectionError": PortalConnectionError,
+    "WallboxCommandUnconfirmed": WallboxCommandUnconfirmed,
+    "HomeAssistantError": RuntimeError,
+})
 
 
 def make_api(responses):
@@ -88,6 +97,43 @@ def make_api(responses):
 
 
 class APITests(unittest.IsolatedAsyncioTestCase):
+    async def test_command_errors_report_stage_and_keep_live_guards(self):
+        for case, expected, posts in (
+            ("manual", "Manuell", 0),
+            ("vehicle", "Fahrzeug anschließen", 0),
+            ("auth", "Sitzung", 0),
+            ("preflight", "wurde nicht gesendet", 0),
+            ("rejected", "HTTP 409", 1),
+            ("gateway", "nicht bestätigt", 1),
+            ("timeout", "nicht bestätigt", 1),
+        ):
+            with self.subTest(case=case):
+                api, session = make_api([(409 if case == "rejected" else 503, {})])
+                api._wallbox_serial = "wallbox"
+                api._find_wallbox_data = Mock(return_value={})
+                api._settings_from_wallbox = Mock(return_value=(
+                    "g2T", {"chargeStrategy": 1 if case == "manual" else 0},
+                ))
+                api._async_get = AsyncMock(side_effect=[
+                    {}, {"status": "NotInsertedGun" if case == "vehicle" else "PendingStart"},
+                ])
+                api._async_token = AsyncMock()
+                if case == "auth":
+                    api._async_get.side_effect = AuthenticationError("login", status=401)
+                elif case == "preflight":
+                    api._async_token.side_effect = PortalConnectionError()
+                elif case == "timeout":
+                    session.post = Mock(side_effect=TimeoutError)
+                button = ControlButton()
+                button._control = "START"
+                refresh = AsyncMock()
+                button.coordinator = SimpleNamespace(api=api, async_request_refresh=refresh)
+                with self.assertRaisesRegex(RuntimeError, expected):
+                    await button.async_press()
+                sent = session.post.call_count if case == "timeout" else len(session.logins)
+                self.assertEqual(sent, posts)
+                refresh.assert_not_awaited()
+
     async def test_optional_site_request_denial_preserves_session_and_omits_private_path(self):
         api, session = make_api([(403, {"private": "test"})])
         api._async_token = AsyncMock()
