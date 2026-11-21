@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.1
+
+- Eigenes Dashboard mit automatischer Entitätszuordnung, optionaler Seitenleistenanzeige und Vorlagenexport für eigene Dashboards.
+- Profilabhängige Bedienung für G1T und G2T, kurze Erklärungen zu Ladeeinstellungen sowie ein Verlauf für Ladeleistung, Status und Zeitfenster.
+- G1T übernimmt „Heute geladen“ bei fehlendem Live-Tageszähler aus der Portal-Energiebilanz. Voraussetzung ist eine eindeutig zugeordnete Anlage mit genau einer Wallbox. Tageswerte werden auf Plausibilität geprüft. Die beiden Sitzungsentitäten werden bei G1T entfernt, da das Portal dafür keine Werte liefert.
+- G2T speichert „Letzte Ladung“ lokal und übernimmt verspätete Korrekturen nach Ladeende. Der gespeicherte Wert übersteht Tageswechsel und Neustarts.
+- Verständlichere Rückmeldungen bei Start/Stopp und getrennte Anzeigen für Portal-Verbindung, fehlenden Wallbox-Status und gemeldete Störungen. Eine Kommunikationswarnung bei fehlendem Status erscheint nach zwei aufeinanderfolgenden Live-Antworten.
+- Lokal gespeicherter API-Diagnoseverlauf für bis zu 24 Stunden, abschaltbar in den Optionen. ZIP-Download mit Fortschrittsanzeige, Datum und Uhrzeit im Dateinamen sowie einer Übersicht der letzten Portalantworten und Fehler.
+- Bekannte persönliche Angaben und Zugangsdaten werden im Diagnoseexport entfernt, maskiert oder pseudonymisiert. Das gilt auch für ältere Aufzeichnungen und die Installations-ID. Betriebszeiten und Energiewerte bleiben für die Fehlersuche enthalten.
+- Das Integrationsmanifest trägt die Version 0.6.1, sodass Home Assistant und zukünftige Diagnoseexporte den installierten Stand ausweisen.
+
+Nach der Installation Home Assistant neu starten.
+
+
 ### G1T-/G2T-Sitzungsenergie bei fehlendem Nullwert
 
 - Ergänzt den bereits für die Tagesenergie vorhandenen geschützten Nullwert-Ersatz auch für `lastChargingAmount`. Fehlende Sitzungswerte werden bei erfolgreicher G1T-/G2T-Live-Antwort mit normalem Status als 0 kWh angezeigt, etwa nach Tageswechsel oder zu Sitzungsbeginn.
