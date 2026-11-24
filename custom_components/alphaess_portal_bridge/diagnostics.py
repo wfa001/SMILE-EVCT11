@@ -5,7 +5,8 @@ can provide a private, signed link to the separate advanced ZIP download.
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from math import isfinite
 import re
 import time
 from typing import Any
@@ -13,6 +14,7 @@ from typing import Any
 from homeassistant.components.http.auth import async_sign_path
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .api import AlphaESSPortalApi
 from .schedule import g1t_schedule_schema_matches, strategy_supported
@@ -112,6 +114,57 @@ def _period_schema(settings: Any) -> dict[str, Any]:
     }
 
 
+def _polling_diagnostics(coordinator) -> dict:
+    stopped = getattr(coordinator, "_stopped", False)
+    supported = coordinator._live_status_supported
+    running = getattr(coordinator, "_live_refresh_running", False)
+    scheduled = coordinator._live_refresh_cancel is not None
+    delay = getattr(coordinator, "_live_scheduled_delay", None)
+    state = ("stopped" if stopped else "unsupported" if supported is False
+             else "running" if running else "backoff" if scheduled and delay and delay > 5
+             else "waiting" if scheduled else "idle")
+    return {"live_interval_seconds": 5 if not stopped and supported is not False
+            and (running or scheduled) else None,
+            "live_poll_state": state, "live_request_running": running,
+            "live_scheduled_delay_seconds": delay if scheduled else None}
+
+
+def _device_timestamp_age(status) -> int | None:
+    if not isinstance(status, dict) or not isinstance(status.get("statusTs"), str):
+        return None
+    try:
+        stamp = datetime.fromisoformat(status["statusTs"].replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            return None
+        age = (datetime.now(timezone.utc) - stamp).total_seconds()
+        return min(int(age), 315360000) if age >= 0 else None
+    except (ValueError, OverflowError):
+        return None
+
+
+def _report_diagnostics(items, today) -> dict:
+    matching = [item for item in items if isinstance(item, dict)
+                and isinstance(item.get("beginDate"), str)
+                and item["beginDate"][:10] == today] if isinstance(items, list) else []
+    values = []
+    for item in matching:
+        raw = item.get("chargingCapacity")
+        if isinstance(raw, bool):
+            continue
+        try:
+            value = float(raw)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if isfinite(value) and value >= 0:
+            values.append(value)
+    state = ("no_report_for_day" if not matching else "invalid_values" if not values
+             else "incomplete_values" if len(values) != len(matching)
+             else "reported_positive" if any(values) else "reported_zero")
+    return {"daily_report_value_available": bool(values), "day": today,
+            "today_report_state": state, "today_matching_report_count": len(matching),
+            "today_valid_energy_count": len(values)}
+
+
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry, *, include_archive_link: bool = True
 ) -> dict[str, Any]:
@@ -124,8 +177,9 @@ async def async_get_config_entry_diagnostics(
     generation, settings = AlphaESSPortalApi._settings_from_wallbox(wallbox)
     status = data.get("wallbox_status")
     report = data.get("latest_report")
+    health = public_diagnosis(coordinator_diagnosis(coordinator, wallbox))
     result = {
-        "diagnostics_schema": 3,
+        "diagnostics_schema": 4,
         "privacy": {
             "mode": "allowlist_values_and_filtered_diagnostic_keys",
             "contains_raw_api_responses": False,
@@ -133,12 +187,15 @@ async def async_get_config_entry_diagnostics(
             "contains_charge_history_values": False,
         },
         "portal_profile": generation if generation in ("g1T", "g2T") else "unknown",
-        "health_summary": public_diagnosis(coordinator_diagnosis(coordinator, wallbox)),
+        "health_summary": health,
         "settings_transfer_status": public_write_feedback(coordinator.api),
         "integration": {
             "configuration_interval_seconds": int(coordinator.update_interval.total_seconds())
             if coordinator.update_interval else None,
-            "live_interval_seconds": 5 if coordinator._live_refresh_cancel is not None else None,
+            **_polling_diagnostics(coordinator),
+            "counters_scope": "since_coordinator_start",
+            "recording_started_at": getattr(getattr(coordinator.api, "history", None),
+                                            "recording_context", {}).get("started_at"),
             "live_polling_supported": coordinator._live_status_supported,
             "live_consecutive_errors": min(coordinator._live_refresh_errors, 100000),
             "data_available": bool(data),
@@ -169,12 +226,15 @@ async def async_get_config_entry_diagnostics(
         },
         "live_data": {
             "source": "real_status" if data.get("wallbox_status_source") == "real_status" else "system_or_unknown",
+            "device_timestamp_age_seconds": _device_timestamp_age(status),
+            "http_response_age_seconds": health["status_age_seconds"],
             "available_fields": _present_fields(status, _LIVE_FIELDS),
             "diagnostic_field_names": _diagnostic_field_names(status),
         },
         "charge_report": {
             "available_fields": _present_fields(report, _REPORT_FIELDS),
-            "daily_report_value_available": isinstance(data.get("today_report_energy"), (int, float)),
+            **_report_diagnostics(getattr(coordinator.api, "_report_items_cache", []),
+                                  dt_util.now().date().isoformat()),
         },
     }
     if include_archive_link and (remaining := coordinator._advanced_diagnostics_until - time.monotonic()) >= 1:

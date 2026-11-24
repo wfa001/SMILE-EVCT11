@@ -41,7 +41,7 @@ class Response:
     async def __aexit__(self, *args):
         pass
 
-    async def json(self):
+    async def json(self, **kwargs):
         return self.data
 
 
@@ -259,7 +259,7 @@ COORD_NS = {
 }
 Coordinator = extract("coordinator.py", "AlphaESSWallboxCoordinator", {
     "_async_update_data", "_async_live_refresh", "_authentication_failed",
-    "stop_live_polling", "stop_followup_refresh",
+    "stop_live_polling", "stop_followup_refresh", "_set_live_mode",
 }, COORD_NS)
 
 

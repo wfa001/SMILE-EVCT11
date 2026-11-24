@@ -319,7 +319,7 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         super().__init__(coordinator, entry, unique_key)
         self._attr_name = name
         self._key = key
-        self._last_energy_trace: tuple[str, str, str, float | None] | None = None
+        self._last_energy_trace: tuple | None = None
 
     @property
     def native_value(self) -> float | None:
@@ -379,17 +379,27 @@ class AlphaESSWallboxEnergySensor(AlphaESSWallboxEntity, SensorEntity):
         wallbox_status = (
             raw_status if isinstance(raw_status, str) and raw_status in STATUS_NAMES else "unknown"
         )
-        trace = (source, wallbox_status, field, value)
+        generation, _ = settings_object(self.coordinator)
+        site_reading = data.get("site_daily_energy")
+        uses_site = (generation == "g1T" and self._key == "chargingAmount"
+                     and (_finite_energy(raw) is None or _finite_energy(raw) < 0)
+                     and site_reading is not None and value is not None)
+        value_source = "site_energy" if uses_site else source
+        value_field = "evCharge.load" if uses_site else self._key
+        source_day = site_reading[0] if uses_site else None
+        fetched_at = data.get("site_daily_energy_fetched_at") if uses_site else None
+        trace = (source, wallbox_status, field, value, value_source, value_field, source_day)
         if trace != self._last_energy_trace:
             self._last_energy_trace = trace
             if history:
                 history.record("bridge", event="energy_sensor", field=self._key,
                                sensor=type(self).__name__,
                                source=source, status=wallbox_status, input=field,
-                               sensor_kwh=value)
+                               sensor_kwh=value, value_source=value_source, value_field=value_field,
+                               source_day=source_day, source_fetched_at=fetched_at)
             _LOGGER.debug(
                 "Wallbox energy %s: source=%s status=%s api=%s sensor_kWh=%r",
-                self._key, *trace,
+                self._key, *trace[:4],
             )
 
     @property

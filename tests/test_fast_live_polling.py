@@ -68,7 +68,7 @@ def load_methods():
         and node.name == "AlphaESSWallboxCoordinator"
     )
     methods = {"start_live_polling", "_schedule_live_refresh",
-               "_async_live_refresh", "stop_live_polling", "_async_update_data"}
+               "_async_live_refresh", "stop_live_polling", "_async_update_data", "_set_live_mode", "_record_selected_status"}
     extracted = [node for node in original.body
                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                  and node.name in methods]

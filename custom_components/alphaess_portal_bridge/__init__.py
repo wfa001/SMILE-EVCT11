@@ -21,7 +21,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_time_interval
 
 from .api import AlphaESSPortalApi
-from .api_history import ApiHistory, purge_expired_archives, remove_archive
+from .api_history import ApiHistory, diagnostic_build, purge_expired_archives, remove_archive
 from .const import (
     CONF_PASSWORD,
     CONF_RECORD_API_HISTORY,
@@ -111,6 +111,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass, entry.entry_id, entry.options.get(CONF_RECORD_API_HISTORY, True),
         tuple(entry.data.get(key, "") for key in (CONF_SYSTEM_SERIAL, CONF_WALLBOX_SERIAL, CONF_USERNAME)),
         entry.data[CONF_PASSWORD],
+        build=await hass.async_add_executor_job(diagnostic_build),
     )
     api.history.record("bridge", event="recording_started")
     coordinator = AlphaESSWallboxCoordinator(
