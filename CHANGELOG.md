@@ -1,5 +1,10 @@
 # Changelog
 
+## Unveröffentlicht
+
+- Neuer Sensor „Ladebefehl-Rückmeldung“ für G1T und G2T mit Vorgangsnummer, Befehl, Zeitpunkten und Fehlergrund. Start/Stopp unterscheidet Portalannahme und eine anschließend beobachtete Ausführung. Nach 120 Sekunden ohne passende Rückmeldung wird „Nicht bestätigt“ angezeigt. Der Sensor bleibt bei Verbindungsproblemen auslesbar.
+- Rücklesung während einer ausstehenden Bestätigung, Anzeige im Dashboard und Aufzeichnung im erweiterten Diagnoseverlauf.
+
 ## 0.6.1
 
 - Eigenes Dashboard mit automatischer Entitätszuordnung, optionaler Seitenleistenanzeige und Vorlagenexport für eigene Dashboards.

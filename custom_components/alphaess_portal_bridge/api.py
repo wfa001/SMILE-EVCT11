@@ -27,6 +27,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
+from .command_feedback import ChargeCommandFeedback
 from .control_feedback import control_reason
 from .schedule import schedule_supported, strategy_supported
 from .write_feedback import SettingsWriteFeedback, settings_targets
@@ -133,6 +134,8 @@ class AlphaESSPortalApi:
         self._charge_current_request_id = 0
         self._settings_written_callback: Callable[[], None] | None = None
         self.settings_feedback = SettingsWriteFeedback()
+        self.command_feedback = ChargeCommandFeedback()
+        self._command_lock = asyncio.Lock()
         self._settings_request_context = None
         self._username = config[CONF_USERNAME]
         self._password = config[CONF_PASSWORD]
@@ -544,6 +547,45 @@ class AlphaESSPortalApi:
         return round(total, 3)
 
     async def async_control_wallbox(self, control: str) -> None:
+        """Publish the outcome of a serialized charging request."""
+        if control not in {"START", "STOP"}:
+            raise ValueError("Nicht unterstützter Wallbox-Befehl")
+        async with self._command_lock:
+            feedback = self.command_feedback
+            feedback.begin(control)
+            try:
+                await self._async_execute_wallbox_control(control)
+            except ValueError:
+                feedback.failed("Abgelehnt", "Ladeeinstellung oder Wallboxstatus blockiert den Befehl")
+                raise
+            except AuthenticationError:
+                feedback.failed("Verbindung gestört", "Anmeldung oder Sitzung abgelehnt")
+                raise
+            except WallboxCommandUnconfirmed:
+                feedback.failed("Übertragung unklar", "Befehl gesendet, Ergebnis nicht bestätigt")
+                raise
+            except PortalConnectionError as err:
+                if err.step == "wallbox control":
+                    feedback.failed("Abgelehnt", f"Portalantwort HTTP {err.status}")
+                else:
+                    feedback.failed("Verbindung gestört", "Portalprüfung fehlgeschlagen, Befehl nicht gesendet")
+                raise
+            except asyncio.CancelledError:
+                feedback.failed("Übertragung unklar", "Aufruf abgebrochen, Ladestatus prüfen")
+                raise
+            except Exception:
+                feedback.failed("Übertragung unklar", "Unerwarteter Fehler, Ladestatus prüfen")
+                raise
+            feedback.accepted()
+            # Invalidate pre-command cached live replies before the next read.
+            self._live_status_cache = None
+            if self._settings_written_callback:
+                try:
+                    self._settings_written_callback()
+                except Exception:
+                    _LOGGER.exception("Unable to schedule charge command read-back")
+
+    async def _async_execute_wallbox_control(self, control: str) -> None:
         """Send a guarded start or stop request to the wallbox."""
         if control not in {"START", "STOP"}:
             raise ValueError("Nicht unterstützter Wallbox-Befehl")
@@ -1066,6 +1108,8 @@ class AlphaESSPortalApi:
     ) -> Any:
         history = getattr(self, "history", None)
         started = time.monotonic()
+        command_feedback = self.command_feedback
+        command_revision = command_feedback.revision
         event = {"method": "GET", "step": step, "request": params}
         if not supplemental:
             event["endpoint"] = path
@@ -1103,6 +1147,8 @@ class AlphaESSPortalApi:
                     history.record("api", **event, http_status=response.status,
                                    duration_ms=round((time.monotonic() - started) * 1000),
                                    **({} if supplemental else {"response": payload}))
+                if step == "wallbox status":
+                    command_feedback.observe(payload, command_revision)
                 return payload
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             if history:

@@ -63,6 +63,7 @@ class Session:
 
 
 API_NS = {
+    "ChargeCommandFeedback": runpy.run_path(str(ROOT / "command_feedback.py"))["ChargeCommandFeedback"],
     'SettingsWriteFeedback': runpy.run_path(str(ROOT / 'write_feedback.py'))['SettingsWriteFeedback'],
     "asyncio": asyncio, "copy": copy, "time": time, "API_URL": "https://example.invalid/api",
     "PORTAL_HEADERS": {}, "CONF_USERNAME": "username", "CONF_PASSWORD": "password",
@@ -75,7 +76,7 @@ API_NS = {
 API = extract("api.py", "AlphaESSPortalApi", {
     "__init__", "_async_token", "_async_create_token", "_reject_authentication",
     "_async_post", "_async_select_region", "_async_get", "_async_authenticated_post",
-    "_history_response_body", "async_control_wallbox", "async_get_live_status",
+    "_history_response_body", "async_control_wallbox", "_async_execute_wallbox_control", "async_get_live_status",
 }, API_NS, include=("AuthenticationError", "PortalConnectionError", "WallboxCommandUnconfirmed"))
 AuthenticationError = API_NS["AuthenticationError"]
 PortalConnectionError = API_NS["PortalConnectionError"]
