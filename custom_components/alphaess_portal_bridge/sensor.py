@@ -68,6 +68,7 @@ async def async_setup_entry(
     sensors = [
         AlphaESSWallboxStatusSensor(coordinator, entry),
         AlphaESSBridgeConnectionSensor(coordinator, entry),
+        AlphaESSChargeCommandSensor(coordinator, entry),
         AlphaESSWallboxDiagnosisSensor(coordinator, entry),
         AlphaESSWallboxPowerSensor(coordinator, entry),
         AlphaESSYesNoSensor(coordinator, entry, "Fahrzeug angeschlossen", "vehicle_connected"),
@@ -90,6 +91,28 @@ async def async_setup_entry(
             AlphaESSWallboxLastChargeSensor(coordinator, entry),
         ))
     async_add_entities(sensors)
+
+
+class AlphaESSChargeCommandSensor(AlphaESSWallboxEntity, SensorEntity):
+    """Expose command feedback independently of current API availability."""
+
+    _attr_name = "Ladebefehl-Rückmeldung"
+    _attr_icon = "mdi:message-check-outline"
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "charge_command_feedback")
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    @property
+    def native_value(self) -> str:
+        return self.coordinator.api.command_feedback.state
+
+    @property
+    def extra_state_attributes(self):
+        return self.coordinator.api.command_feedback.attributes()
 
 
 class AlphaESSBridgeConnectionSensor(AlphaESSWallboxEntity, SensorEntity):

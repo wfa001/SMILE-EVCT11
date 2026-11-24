@@ -75,9 +75,18 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._full_consecutive_errors = 0
         self._live_revision = 0
         self._latest_live_status: dict[str, Any] | None = None
+        if feedback := getattr(self.api, "command_feedback", None):
+            feedback.set_listener(self._async_command_feedback_changed)
         self.api.set_settings_written_callback(self._schedule_followup_refresh)
         if feedback := getattr(self.api, 'settings_feedback', None):
             feedback.set_listener(self._async_settings_feedback_changed)
+
+    def _async_command_feedback_changed(self) -> None:
+        feedback = self.api.command_feedback
+        if history := getattr(self.api, "history", None):
+            history.record("control", event="charge_command_feedback",
+                           result=feedback.state, **feedback.attributes())
+        self.async_update_listeners()
 
     def _async_settings_feedback_changed(self) -> None:
         if history := getattr(self.api, "history", None):
@@ -259,11 +268,16 @@ class AlphaESSWallboxCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._cancel_followup_refresh = None
         if not self._stopped:
             await self.async_request_refresh()
+            feedback = getattr(self.api, "command_feedback", None)
+            if feedback and feedback.state == "Vom Portal angenommen":
+                self._schedule_followup_refresh()
 
     def stop_followup_refresh(self) -> None:
         """Prevent scheduled API traffic after the config entry is unloaded."""
         self._stopped = True
         self.api.set_settings_written_callback(None)
+        if feedback := getattr(self.api, "command_feedback", None):
+            feedback.close()
         if feedback := getattr(self.api, 'settings_feedback', None):
             feedback.set_listener(None)
         if self._cancel_followup_refresh is not None:

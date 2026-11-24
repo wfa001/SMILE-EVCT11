@@ -276,6 +276,8 @@ def build_wallbox_views(box: WallboxDashboard, *, prefix: str = "",
         left.append({"type": "entities", "show_header_toggle": False, "entities": rows})
     if api:
         left.append(_portal_feedback(api))
+    if command := e.get("charge_command_feedback"):
+        left.append(_tile(command, "Ladebefehl-Rückmeldung", icon="mdi:message-check-outline"))
     if indices:
         # One template string per row, no missing entity placeholders or invented values.
         lines = ["**Gespeicherte Zeitfenster**", "", "| Fenster | Freigabe | Zeit | Lademodus |",

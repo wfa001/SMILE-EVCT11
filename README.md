@@ -189,6 +189,29 @@ Gerätekennung, Entity-Unique-IDs und bestehende Automationen bleiben erhalten.
 
 Die Beta sendet absichtlich **keinen automatischen zweiten STOP-Befehl**. In einem Test musste STOP einmal erneut gesendet werden; die Ursache ist noch nicht reproduzierbar geklärt.
 
+### Ladebefehl-Rückmeldung für Automationen
+
+Der Sensor **Ladebefehl-Rückmeldung** ist für G1T und G2T verfügbar.
+Nach Start oder Stopp zeigt er **Wird gesendet**, danach **Vom Portal
+angenommen** und nach passender Statusrückmeldung **Ausführung bestätigt**.
+Eine Bestätigung erfordert einen nach Annahme gestarteten Live-Abruf. Wenn
+die Antwort einen Gerätezeitstempel enthält, muss dieser ebenfalls neuer
+als die Annahme sein. START erwartet den Status Charging. STOP erwartet
+ChargingStopped oder CharingStopped und, sofern gemeldet, Leistung 0 W.
+
+Nach 120 Sekunden ohne Bestätigung wechselt der Sensor zu **Nicht bestätigt**,
+auch wenn keine weitere Portalantwort eintrifft. Weitere Ergebnisse sind
+**Abgelehnt**, **Verbindung gestört** und **Übertragung unklar**. Die Attribute
+enthalten Befehl, Vorgangsnummer, Zeitpunkte, Fehlergrund und gemeldete Leistung.
+Eine Automation sollte die Vorgangsnummer ihres Aufrufs zuordnen und auf
+dessen Ergebnis warten. Ein älteres Ergebnis bestätigt keinen neuen Aufruf.
+
+Während die Bestätigung aussteht, werden reguläre Rücklesungen im Abstand
+von etwa drei Sekunden nach Abschluss der vorherigen Rücklesung angefordert.
+Die Bridge zeichnet die Rückmeldung im Diagnoseverlauf auf. Wiederholungen
+oder Benachrichtigungen kann die eigene Automation anhand des Sensors auslösen.
+Nach Neuladen oder Neustart beginnt die Anzeige mit **Kein Ladebefehl erfasst**.
+
 ### Smart Mode
 
 Smart Mode wird nur für G2T angeboten. Beim Aktivieren prüft die Integration:

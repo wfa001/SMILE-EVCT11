@@ -130,6 +130,20 @@ class FollowupReadbackTests(unittest.IsolatedAsyncioTestCase):
         await scheduled_calls[-1].run()
         self.assertEqual(coordinator.refresh_count, 0)
 
+    async def test_pending_command_repeats_readback_until_result(self):
+        from types import SimpleNamespace
+        coordinator = FakeCoordinator()
+        feedback = coordinator.api.command_feedback = SimpleNamespace(state="Vom Portal angenommen")
+        coordinator._schedule_followup_refresh()
+        await scheduled_calls[-1].run()
+        self.assertEqual(coordinator.refresh_count, 1)
+        self.assertEqual(len(scheduled_calls), 2)
+        feedback.state = "Ausführung bestätigt"
+        await scheduled_calls[-1].run()
+        self.assertEqual(coordinator.refresh_count, 2)
+        self.assertEqual(len(scheduled_calls), 2)
+        self.assertIsNone(coordinator._cancel_followup_refresh)
+
     async def test_unloaded_coordinator_ignores_new_notifications(self):
         coordinator = FakeCoordinator()
         coordinator.stop_followup_refresh()
