@@ -2,6 +2,13 @@
 
 ## Unveröffentlicht
 
+- G1T setzt schnelle Statusabfragen nach vorübergehendem HTTP 409 mit begrenzter Wartezeit fort; nur ein tatsächlich fehlender Endpunkt (404) deaktiviert sie.
+- Erweiterte Diagnose zeichnet vollständige bereinigte Tages-/Wochenenergieantworten einschließlich unbekannter Betriebsfelder auf; private Anlagen-URLs bleiben ausgespart.
+- Diagnose nennt die verwendete Energiequelle, Quelldatum und Abrufzeit und unterscheidet fehlende Tagesberichte von berichteter Nullenergie und ungültigen Werten.
+- Polling-Takt, laufende Abfrage und Wartezeit werden getrennt ausgewiesen. Gerätezeitstempelalter und HTTP-Antwortalter stehen separat zur Verfügung, ohne neue Warnschwellen.
+- Aufzeichnungsabschnitte und neue Verlaufseinträge erhalten Laufkennung und Code-Fingerabdruck. Zähler werden als Werte seit Coordinator-Start gekennzeichnet.
+- Installationsdatumsfelder werden auch aus alten Aufzeichnungen beim Export entfernt. G1T erhält keine Software-Phasenumschaltung.
+
 - Neuer Sensor „Ladebefehl-Rückmeldung“ für G1T und G2T mit Vorgangsnummer, Befehl, Zeitpunkten und Fehlergrund. Start/Stopp unterscheidet Portalannahme und eine anschließend beobachtete Ausführung. Nach 120 Sekunden ohne passende Rückmeldung wird „Nicht bestätigt“ angezeigt. Der Sensor bleibt bei Verbindungsproblemen auslesbar.
 - Rücklesung während einer ausstehenden Bestätigung, Anzeige im Dashboard und Aufzeichnung im erweiterten Diagnoseverlauf.
 

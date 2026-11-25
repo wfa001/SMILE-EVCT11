@@ -68,7 +68,7 @@ Diese verweist auf die entsprechende `id` in `api-antworten.jsonl`.
 Identische bereinigte Antworten stehen dort einmal. Neue API-Felder und
 Änderungen an Werten oder Datentypen bleiben sichtbar. Bekannte sensible
 Werte werden maskiert oder pseudonymisiert, auch beim Export älterer
-Aufzeichnungen. Bekannte Standort-, Installateur- und Netzwerkfelder werden
+Aufzeichnungen. Bekannte Standort-, Installateur- und Netzwerkfelder sowie Installationsdaten werden
 entfernt. Für die G1T-Energiebilanz protokolliert die Bridge Abrufstatus,
 Ergebnis der Anlagenzuordnung, Datum und kWh-Wert. Beim ZIP-Download fragt die
 Bridge für eine eindeutig zugeordnete Anlage mit genau einer Wallbox sieben
@@ -82,6 +82,9 @@ Momentaufnahme.
 
 
 ### G1T
+
+Die G1T unterstützt keine Phasenumschaltung per Software. Das vorhandene
+API-Feld `obcPhase` wird nicht als schaltbare oder gemessene Phasenzahl angeboten.
 
 - Die Bridge stellt **Heute geladen** bereit. Sitzungsenergie meldet das G1T-Portal nicht.
 - Zwei vom Portal gemeldete Zeitfenster mit Aktivierung, Beginn und Ende können in Home Assistant gelesen und bearbeitet werden. Der lokale G1T-Test vom 15.10.2026 bestätigte, dass eine über Home Assistant geänderte Zeit im Portal ankommt. Das bestätigt die Speicherung, nicht die tatsächliche Ladeausführung.
@@ -282,7 +285,7 @@ Der Diagnose-Sensor **Wallbox Bridge Verbindung** beurteilt separat den Zugriff 
 | `Fault` | Störung |
 | `Upgrading` | Softwareaktualisierung läuft |
 
-Diese allgemeinen Statuswerte enthalten keine genaue Fehlerursache. Insbesondere wird `Disconnected` nicht pauschal mit einem RS485-Ausfall gleichgesetzt. Detaillierte Fehler wie Übertemperatur sind ohne passende API-Antwort weiterhin nicht zugeordnet. System-Fallbackdaten und fehlgeschlagene HTTP-Aufrufe lösen die neue Kommunikationsmeldung nicht aus. Meldet der G1T-Live-Endpunkt HTTP 404/409, bleibt der bisherige Rückfall auf den regulären Abruf erhalten.
+Diese allgemeinen Statuswerte enthalten keine genaue Fehlerursache. Insbesondere wird `Disconnected` nicht pauschal mit einem RS485-Ausfall gleichgesetzt. Detaillierte Fehler wie Übertemperatur sind ohne passende API-Antwort weiterhin nicht zugeordnet. System-Fallbackdaten und fehlgeschlagene HTTP-Aufrufe lösen die neue Kommunikationsmeldung nicht aus. Bei G1T führt nur HTTP 404 zum Rückfall auf den regulären Abruf. HTTP 409 (etwa „network is busy“, Code 6026) wird mit begrenzter Wartezeit erneut abgefragt; nach Erfolg läuft der schnelle Takt automatisch weiter.
 
 Versuch und Quellen: [RS485-Kommunikationstest vom 23.10.2026](docs/wallbox_communication_2026-10-23.md).
 
@@ -348,6 +351,39 @@ Zugangsdaten, Tokens und persönliche Daten aus Logs entfernen. Seriennummern f�
 
 ### Faster G2T live values (development branch)
 
-G2T wallboxes refresh the read-only portal `real-status` endpoint approximately every **5 seconds**, independently of the normal system/configuration refresh (30 seconds by default). This updates charging power, status, plug/lock state and the live energy fields without repeatedly loading settings and report history. A 3-second shared response cache also avoids duplicate status requests close to normal refreshes. G1T polling stays unchanged.
+G2T wallboxes refresh the read-only portal `real-status` endpoint approximately every **5 seconds**, independently of the normal system/configuration refresh (30 seconds by default). This updates charging power, status, plug/lock state and the live energy fields without repeatedly loading settings and report history. A 3-second shared response cache also avoids duplicate status requests close to normal refreshes. G1T also uses fast polling where the endpoint is available. Only HTTP 404 disables this route; temporary HTTP 409 responses are retried with bounded backoff.
 
 The five-second interval is based on short read-only portal tests; it is **not** an official AlphaESS rate-limit guarantee. On connection errors the live reader backs off; HTTP 429 on live-status reads uses a longer 120-second pause. Authentication failures stop polling and require explicit reauthentication, including after a restart. HTTP 409/429 during login is also paused rather than automatically retried. No charge-control, schedules or Smart Mode logic was changed. AlphaESS has been observed to refresh cloud power values about every ten seconds, so five-second polling primarily lowers Home Assistant's additional detection delay.
+
+
+### Diagnose: Quellen, Laufzeit und Datenfrische
+
+Die erweiterte ZIP enthält die vollständigen bereinigten Antworten der Tages-
+und Wochenenergie-Abfragen einschließlich unbekannter Betriebsfelder. Private
+Anlagen-URLs bleiben ausgespart; bei der Anlagen-/Gerätezuordnung werden
+weiterhin nur Status und Zuordnungsergebnis aufgezeichnet. Fehlende Felder,
+`null`, gemeldete Nullwerte und veränderte Antwortstrukturen sind damit bei der
+Energiequelle unterscheidbar.
+
+`energy_sensor` nennt neben dem ursprünglichen Live-Feld die verwendete Quelle
+(`value_source`, `value_field`), bei G1T-Tageswerten auch Quelldatum und Abrufzeit.
+Die kompakte Diagnose unterscheidet fehlende Tagesberichte, gemeldete Nullenergie,
+positive und ungültige/unvollständige Berichte. Verzögert erstellte Ladeberichte
+ersetzen weiterhin keine Live-Energiezähler.
+
+Die Polling-Diagnose trennt den Fünf-Sekunden-Grundtakt von laufenden Abfragen,
+geplanten Wartezeiten und deaktiviertem Polling. Wechsel des Polling-Modus werden
+aufgezeichnet. Gerätezeitstempelalter und Alter der letzten empfangenen
+Statusantwort stehen separat zur Verfügung; daraus entstehen keine zusätzlichen
+Störungsmeldungen.
+
+`recording_context` enthält Aufzeichnungsbeginn, eine zufällige Laufkennung und
+einen Fingerabdruck des ausgelieferten Codes. Neue Verlaufseinträge tragen die
+Laufkennung und den Build-Fingerabdruck. Ältere Einträge ohne diese Angaben
+werden nicht nachträglich einem Build zugeordnet. Erfolgs-/Fehlerzähler der
+kompakten Diagnose gelten seit dem letzten Coordinator-Start, nicht für die
+gesamten 24 Stunden. Ein Release-Tag wird aus dem Code-Fingerabdruck nicht geraten.
+
+`installDate` und `installDatetime` werden auch aus älteren Aufzeichnungen beim
+Export entfernt. Die 24-Stunden-Aufbewahrung, ZIP-Kompression Stufe 6 und
+nachträglichen Energiekorrekturen bleiben erhalten.

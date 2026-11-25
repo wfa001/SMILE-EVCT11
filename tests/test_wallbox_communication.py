@@ -310,7 +310,7 @@ class PollingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status_sensor(item).native_value, "Nicht angeschlossen")
 
     async def test_g1t_unsupported_endpoint_does_not_publish_communication_failure(self):
-        for code in (404, 409):
+        for code in (404,):
             calls.clear()
             item = coordinator_with({"status": "Charging"}, generation="g1T", source="system")
             item.api.statuses = [PortalConnectionError(code)]

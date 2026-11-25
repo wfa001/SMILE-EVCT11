@@ -17,6 +17,7 @@ from tempfile import TemporaryFile
 import time
 from typing import Any, BinaryIO
 from zipfile import ZIP_DEFLATED, ZipFile
+from uuid import uuid4
 import zlib
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ _REMOVED_FIELDS = re.compile(
     r"state(?:name|code)?|province|region|street|postalcode|zipcode|address.*|location.*)"
     r"|(?:lan|wan|local|public|private|gateway)?ip(?:v[46]|address)?"
     r"|(?:wifi)?(?:ssid|bssid|pwd|passphrase)|mac(?:address)?"
-    r"|siteid|installrecordid|(?:user|device|site)(?:description|remark)|realname|fullname)$",
+    r"|siteid|installrecordid|installdate|installdatetime|(?:user|device|site)(?:description|remark)|realname|fullname)$",
     re.I,
 )
 _PRIVATE = re.compile(
@@ -68,10 +69,26 @@ def _timestamp(seconds: float) -> str:
     return datetime.fromtimestamp(seconds, timezone.utc).isoformat()
 
 
+def diagnostic_build() -> dict:
+    """Identify shipped code without credentials or local repository metadata."""
+    root = Path(__file__).parent
+    try:
+        version = json.loads((root / "manifest.json").read_text())["version"]
+        digest = blake2s()
+        for path in sorted(root.iterdir()):
+            if path.suffix in {".py", ".js"} or path.name == "manifest.json":
+                content = path.read_bytes()
+                digest.update(path.name.encode() + b"\0" + len(content).to_bytes(8, "big") + content)
+        return {"manifest_version": f"v{version}", "code_fingerprint": digest.hexdigest()[:16],
+                "diagnostics_revision": 4}
+    except (OSError, ValueError, KeyError):
+        return {"diagnostics_revision": 4, "build_unavailable": True}
+
+
 class ApiHistory:
     """Buffer briefly in memory, write and export off the Home Assistant loop."""
 
-    def __init__(self, hass, entry_id: str, enabled: bool, identifiers: tuple[str, ...], password: str = "") -> None:
+    def __init__(self, hass, entry_id: str, enabled: bool, identifiers: tuple[str, ...], password: str = "", *, build: dict | None = None) -> None:
         self.hass = hass
         self.enabled = enabled
         self.path = Path(hass.config.path(".storage", f"{_FILE_PREFIX}{entry_id}.sqlite3"))
@@ -83,6 +100,8 @@ class ApiHistory:
         self._lock = asyncio.Lock()
         self._closed = False
         self._storage_error = False
+        self.recording_context = {"recording_run": uuid4().hex,
+                                  "started_at": _timestamp(time.time()), "build": build or {}}
 
     def _alias(self, value: Any) -> str:
         return "id-" + blake2s(str(value).encode(), key=self._key, digest_size=8).hexdigest()
@@ -129,6 +148,10 @@ class ApiHistory:
             return
         try:
             cleaned = self._clean(event)
+            cleaned["recording_run"] = self.recording_context["recording_run"]
+            cleaned["build_fingerprint"] = self.recording_context["build"].get("code_fingerprint")
+            if event.get("event") == "recording_started":
+                cleaned["recording_context"] = self.recording_context
         except (ValueError, TypeError, RecursionError):
             self._dropped += 1
             return
@@ -286,6 +309,7 @@ class ApiHistory:
                 }
                 manifest = json.loads(Path(__file__).with_name("manifest.json").read_text(encoding="utf-8"))
                 summary["bridge_manifest_version"] = manifest["version"]
+                summary["recording_context"] = self.recording_context
                 archive.writestr("diagnose.json", _json(summary))
                 archive.writestr("api-uebersicht.json", _json({
                     "history_enabled": self.enabled,

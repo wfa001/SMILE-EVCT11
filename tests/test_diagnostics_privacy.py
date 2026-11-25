@@ -4,6 +4,8 @@ Run: python -m unittest discover -s tests
 """
 import ast
 import asyncio
+from datetime import datetime, timezone
+from math import isfinite
 import json
 import re
 import runpy
@@ -22,6 +24,7 @@ def load_helpers():
     module = ast.parse(source.read_text(encoding="utf-8"))
     names = {
         "_present_fields", "_bool_capability", "_period_schema",
+        "_polling_diagnostics", "_device_timestamp_age", "_report_diagnostics",
         "_diagnostic_field_names", "async_get_config_entry_diagnostics",
     }
     subset = ast.Module(
@@ -46,7 +49,9 @@ def load_helpers():
                     return profile, wallbox[profile]
             return None, None
 
-    namespace = {"re": re, "time": time, "Any": Any, "HomeAssistant": object, "ConfigEntry": object, "AlphaESSPortalApi": FakePortal, "DOMAIN": "alphaess_portal_bridge", **runpy.run_path(str(source.parent / "schedule.py")), **runpy.run_path(str(source.parent / 'wallbox_diagnosis.py'))}
+    namespace = {"datetime": datetime, "timezone": timezone, "isfinite": isfinite,
+                 "dt_util": SimpleNamespace(now=lambda: datetime.now(timezone.utc)),
+                 "re": re, "time": time, "Any": Any, "HomeAssistant": object, "ConfigEntry": object, "AlphaESSPortalApi": FakePortal, "DOMAIN": "alphaess_portal_bridge", **runpy.run_path(str(source.parent / "schedule.py")), **runpy.run_path(str(source.parent / 'wallbox_diagnosis.py'))}
     exec(compile(ast.fix_missing_locations(subset), str(source), "exec"), namespace)
     return namespace
 

@@ -154,6 +154,7 @@ class AlphaESSPortalApi:
         self._site_energy: tuple[str, float] | None = None
         self._site_energy_key: tuple[str, str] | None = None
         self._site_energy_until = 0.0
+        self._site_energy_fetched_at: str | None = None
 
     def set_settings_written_callback(
         self, callback: Callable[[], None] | None
@@ -277,6 +278,7 @@ class AlphaESSPortalApi:
             "latest_report": latest_report,
             "today_report_energy": today_report_energy,
             "site_daily_energy": site_daily_energy,
+            "site_daily_energy_fetched_at": self._site_energy_fetched_at,
         }
 
     async def _async_find_energy_site(self, wallbox_serial: str) -> str | None:
@@ -375,6 +377,7 @@ class AlphaESSPortalApi:
                 self.history.record("bridge", event="site_daily_energy", day=day,
                                     result="request_failed", cached_kwh=self._site_energy[1] if self._site_energy else None)
             return self._site_energy
+        self._site_energy_fetched_at = dt_util.now().isoformat()
         value = self._site_load_by_day(response, "evCharge").get(day)
         consumption = self._site_consumption_by_day(response).get(day)
         result = self._site_energy_result(value, consumption)
@@ -1111,8 +1114,12 @@ class AlphaESSPortalApi:
         command_feedback = self.command_feedback
         command_revision = command_feedback.revision
         event = {"method": "GET", "step": step, "request": params}
+        capture_response = not supplemental or step in {"site daily energy", "site energy seven days"}
         if not supplemental:
             event["endpoint"] = path
+        elif capture_response:
+            # Keep the operational payload; never expose the private site URL.
+            event["endpoint"] = "/internal/v1/sites/[site]/energy"
         try:
             await self._async_token()
         except (AuthenticationError, PortalConnectionError) as err:
@@ -1130,7 +1137,7 @@ class AlphaESSPortalApi:
                 if history and history.enabled and response.status != 200:
                     history.record("api", **event, http_status=response.status,
                                    duration_ms=round((time.monotonic() - started) * 1000),
-                                   **({} if supplemental else await self._history_response_body(response)))
+                                   **(await self._history_response_body(response) if capture_response else {}))
                 if response.status in (401, 403) and not supplemental:
                     raise self._reject_authentication(step, response.status)
                 if response.status != 200:
@@ -1146,7 +1153,7 @@ class AlphaESSPortalApi:
                 if history:
                     history.record("api", **event, http_status=response.status,
                                    duration_ms=round((time.monotonic() - started) * 1000),
-                                   **({} if supplemental else {"response": payload}))
+                                   **({"response": payload} if capture_response else {}))
                 if step == "wallbox status":
                     command_feedback.observe(payload, command_revision)
                 return payload

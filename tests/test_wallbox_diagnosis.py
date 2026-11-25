@@ -147,7 +147,7 @@ class CoordinatorDiagnosisTests(unittest.IsolatedAsyncioTestCase):
         from test_diagnostics_privacy import load_helpers
         export=await load_helpers()['async_get_config_entry_diagnostics'](
             SimpleNamespace(data={'alphaess_portal_bridge':{'entry':item}}),SimpleNamespace(entry_id='entry'))
-        self.assertEqual(export['diagnostics_schema'],3)
+        self.assertEqual(export['diagnostics_schema'],4)
         self.assertTrue(export['health_summary']['fault_reported'])
         self.assertNotIn('PRIVATE-',json.dumps(export))
         self.assertNotIn('advanced_api_snapshot',export)
